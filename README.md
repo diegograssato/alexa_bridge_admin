@@ -212,6 +212,84 @@ Recursos principais:
 - Em alteracao de YAML, execute pyscript.alexa_bridge_reload para recarregar mapeamentos e topicos em memoria.
 - Se alterar mqtt.input_topic, recarregue o PyScript para re-assinar o novo topico de entrada.
 
+## Bridge MQTT com Broker Secundario
+
+Se o Home Assistant ja esta conectado ao Mosquitto local e voce quer que ele tambem receba/publice mensagens no broker secundario test.mosquitto.org, a melhor abordagem e criar uma bridge MQTT no Mosquitto local.
+
+Cenario:
+
+```text
+Home Assistant
+  |
+  v
+Mosquitto Local
+  |
+  v
+test.mosquitto.org:1883
+```
+
+Assim:
+
+- O Home Assistant continua usando apenas o broker local.
+- O Mosquitto replica os topicos desejados para o broker externo.
+- Nao e necessario criar uma segunda integracao MQTT no Home Assistant.
+
+### Configuracao da Bridge no Add-on Mosquitto
+
+No add-on Mosquitto do Home Assistant, adicione configuracao equivalente em um arquivo customizado:
+
+```conf
+connection alexa_bridge
+
+address test.mosquitto.org:1883
+
+try_private false
+start_type automatic
+cleansession true
+
+topic alexa/command both 0
+```
+
+Se quiser encaminhar tudo:
+
+```conf
+topic # both 0
+```
+
+Recomendacao para este projeto:
+
+```conf
+topic alexa/command both 0
+```
+
+### Mosquitto fora do Add-on
+
+Arquivo:
+
+```text
+/etc/mosquitto/conf.d/bridge.conf
+```
+
+Conteudo:
+
+```conf
+connection alexa_bridge
+
+address test.mosquitto.org:1883
+
+try_private false
+start_type automatic
+cleansession true
+
+topic alexa/command both 0
+```
+
+Depois aplique:
+
+```bash
+sudo systemctl restart mosquitto
+```
+
 ## Operacao e Troubleshooting
 
 Verifique logs para:
