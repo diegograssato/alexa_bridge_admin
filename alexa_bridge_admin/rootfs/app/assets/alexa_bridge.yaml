@@ -1,0 +1,13 @@
+mqtt:
+  input_topic: alexa/command
+  output_topic: homeassistant/voice/command
+  ack_topic: homeassistant/voice/ack
+  dlq_topic: homeassistant/voice/dlq
+
+commands:
+  off_keywords:
+    - desliga
+    - desligar
+    - turn off
+
+devices: {}

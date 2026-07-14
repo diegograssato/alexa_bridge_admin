@@ -1,0 +1,1152 @@
+<!doctype html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Alexa Bridge Admin</title>
+    <style>
+        :root {
+            --bg: #11131a;
+            --panel: #1b1f2b;
+            --panel-2: #1f2330;
+            --line: #2b3142;
+            --text: #e9edf7;
+            --muted: #9aa5bf;
+            --accent: #f0932b;
+            --danger: #e74c3c;
+            --ok: #27ae60;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: "Segoe UI", Tahoma, sans-serif;
+            background: linear-gradient(180deg, #0f1218 0%, #151926 100%);
+            color: var(--text);
+        }
+
+        .app {
+            max-width: 1220px;
+            margin: 0 auto;
+            padding: 16px;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 40px;
+        }
+
+        .header p {
+            margin: 4px 0 16px;
+            color: var(--muted);
+        }
+
+        .tabs {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 14px;
+        }
+
+        .tab {
+            background: #1a1f2b;
+            border: 1px solid var(--line);
+            color: #c8d2ea;
+            border-radius: 8px;
+            padding: 9px 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .tab.active {
+            background: var(--accent);
+            color: #fff;
+            border-color: #c67c2e;
+        }
+
+        .panel {
+            display: none;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 14px;
+        }
+
+        .panel.active {
+            display: block;
+        }
+
+        .title {
+            margin: 0 0 12px;
+            font-size: 28px;
+        }
+
+        .row {
+            display: grid;
+            gap: 10px;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .row-2 {
+            display: grid;
+            gap: 10px;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        @media (max-width: 900px) {
+
+            .row,
+            .row-2 {
+                grid-template-columns: 1fr;
+            }
+
+            .header h1 {
+                font-size: 28px;
+            }
+        }
+
+        .field {
+            display: grid;
+            gap: 6px;
+        }
+
+        label {
+            color: var(--muted);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        input,
+        textarea,
+        select {
+            width: 100%;
+            background: #151926;
+            color: var(--text);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 10px;
+            font-size: 14px;
+        }
+
+        textarea {
+            min-height: 300px;
+            resize: vertical;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .btn {
+            border: 1px solid var(--line);
+            background: #1a1f2b;
+            color: #d9e3f7;
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .btn.primary {
+            background: var(--accent);
+            border-color: #c67c2e;
+            color: #fff;
+        }
+
+        .btn.danger {
+            background: var(--danger);
+            border-color: #ce3c2c;
+            color: #fff;
+        }
+
+        .btn.ok {
+            background: #1f5b35;
+            border-color: #2f8f53;
+        }
+
+        .btn.ghost {
+            background: transparent;
+        }
+
+        .kpis {
+            display: grid;
+            gap: 10px;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .kpi {
+            background: var(--panel-2);
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 12px;
+        }
+
+        .kpi .k {
+            color: var(--muted);
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        .kpi .v {
+            margin-top: 6px;
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th,
+        td {
+            border-bottom: 1px solid var(--line);
+            padding: 10px 8px;
+            text-align: left;
+            font-size: 14px;
+        }
+
+        th {
+            color: var(--muted);
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        .entities-table {
+            table-layout: fixed;
+        }
+
+        .entities-table th:nth-child(1),
+        .entities-table td:nth-child(1) {
+            width: 12%;
+        }
+
+        .entities-table th:nth-child(2),
+        .entities-table td:nth-child(2) {
+            width: 24%;
+        }
+
+        .entities-table th:nth-child(3),
+        .entities-table td:nth-child(3) {
+            width: 48%;
+        }
+
+        .entities-table th:nth-child(4),
+        .entities-table td:nth-child(4) {
+            width: 16%;
+        }
+
+        .cell-wrap {
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+
+        .tiny-actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        .tiny {
+            padding: 6px 9px;
+            font-size: 12px;
+        }
+
+        .table-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .table-footer .pager {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status {
+            margin-top: 10px;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .status.ok {
+            color: #8de1af;
+        }
+
+        .status.error {
+            color: #ff9a9a;
+        }
+
+        .modal.hidden {
+            display: none;
+        }
+
+        .modal {
+            position: fixed;
+            inset: 0;
+            z-index: 20;
+        }
+
+        .modal-bg {
+            position: absolute;
+            inset: 0;
+            background: rgba(6, 10, 16, 0.72);
+        }
+
+        .modal-box {
+            position: relative;
+            max-width: 700px;
+            margin: 9vh auto;
+            background: #212532;
+            border: 1px solid #353d52;
+            border-radius: 12px;
+            padding: 16px;
+            z-index: 2;
+        }
+
+        .modal-title {
+            margin: 0 0 12px;
+        }
+
+        .alias-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .alias-pill {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: start;
+            column-gap: 8px;
+            background: #2b3346;
+            border: 1px solid #3a4560;
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: 12px;
+            max-width: 100%;
+            width: fit-content;
+        }
+
+        .alias-pill .alias-text {
+            min-width: 0;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            line-height: 1.3;
+        }
+
+        .alias-pill button {
+            border: 0;
+            background: transparent;
+            color: #ffd9d9;
+            cursor: pointer;
+            font-weight: 700;
+            flex: 0 0 auto;
+        }
+    </style>
+</head>
+
+<body>
+    <main class="app">
+        <header class="header">
+            <h1>Alexa Bridge Admin</h1>
+            <p>Bridge em PyScript para integrar Alexa Skill e Home Assistant via MQTT.</p>
+            <p>O fluxo recebe mensagens da skill em um topico de entrada, resolve dispositivo por alias no YAML e
+                publica evento normalizado para automacoes do Home Assistant.</p>
+            <p>Este repositorio tambem contem o addon Alexa Bridge Admin, que fornece interface web para operar o YAML e
+                o ciclo de runtime do bridge.</p>
+        </header>
+
+        <nav class="tabs" id="tabs">
+            <button class="tab active" data-tab="dashboard">Dashboard</button>
+            <button class="tab" data-tab="config">Configuracao</button>
+            <button class="tab" data-tab="entities">Entidades</button>
+            <button class="tab" data-tab="yaml">Raw YAML</button>
+            <button class="tab" data-tab="backup">Backup / Restore</button>
+            <button class="tab" data-tab="diagnostics">Diagnostico</button>
+            <button class="tab" data-tab="audit">Auditoria</button>
+        </nav>
+
+        <section id="tab-dashboard" class="panel active">
+            <h2 class="title">Dashboard</h2>
+            <div class="kpis">
+                <div class="kpi">
+                    <div class="k">Rooms</div>
+                    <div class="v" id="kpi-rooms">-</div>
+                </div>
+                <div class="kpi">
+                    <div class="k">Devices</div>
+                    <div class="v" id="kpi-devices">-</div>
+                </div>
+                <div class="kpi">
+                    <div class="k">Input Topic</div>
+                    <div class="v" id="kpi-input">-</div>
+                </div>
+                <div class="kpi">
+                    <div class="k">Ultimo Reload</div>
+                    <div class="v" id="kpi-reload">-</div>
+                </div>
+            </div>
+            <div class="actions">
+                <button class="btn" id="btn-run-reload">Executar Reload PyScript</button>
+            </div>
+            <div id="status-dashboard" class="status"></div>
+        </section>
+
+        <section id="tab-config" class="panel">
+            <h2 class="title">Configuracao</h2>
+            <div class="row-2">
+                <div class="field"><label>MQTT Input Topic</label><input id="input-topic" /></div>
+                <div class="field"><label>MQTT Output Topic</label><input id="output-topic" /></div>
+                <div class="field"><label>MQTT Ack Topic</label><input id="ack-topic" /></div>
+                <div class="field"><label>MQTT DLQ Topic</label><input id="dlq-topic" /></div>
+            </div>
+            <div class="field" style="margin-top:10px"><label>Off Keywords (virgula)</label><input id="off-keywords" />
+            </div>
+            <div class="actions">
+                <button class="btn primary" id="btn-save-config">Salvar</button>
+                <button class="btn" id="btn-refresh-config">Atualizar</button>
+            </div>
+            <div id="status-config" class="status"></div>
+        </section>
+
+        <section id="tab-entities" class="panel">
+            <h2 class="title">Busca e Listagem de Entidades</h2>
+            <div class="actions">
+                <button class="btn primary" id="btn-new-entity">+ Nova Entidade</button>
+                <button class="btn" id="btn-export-devices">Exportar YAML</button>
+                <button class="btn" id="btn-import-devices">Importar YAML</button>
+                <input type="file" id="file-import-devices" accept=".yaml,.yml" style="display:none" />
+            </div>
+            <div class="row-2" style="margin-top:10px">
+                <div class="field"><label>Busca</label><input id="entities-query"
+                        placeholder="entity_id, room ou alias" /></div>
+                <div class="actions" style="align-items:end">
+                    <button class="btn primary" id="btn-search-entities">Buscar</button>
+                    <button class="btn" id="btn-clear-entities">Limpar</button>
+                </div>
+            </div>
+            <div style="margin-top:8px;color:var(--muted)" id="entities-total">Total: 0</div>
+            <table class="entities-table">
+                <thead>
+                    <tr>
+                        <th>Cômodos</th>
+                        <th>Media</th>
+                        <th>Aliases</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="entities-body"></tbody>
+            </table>
+            <div class="table-footer">
+                <div id="entities-page-info" class="status" style="margin:0">Pagina 1 de 1</div>
+                <div class="pager">
+                    <button class="btn" id="btn-prev-page">Anterior</button>
+                    <button class="btn" id="btn-next-page">Proxima</button>
+                </div>
+                <div class="pager" style="margin-left:auto">
+                    <label for="entities-page-size"
+                        style="text-transform:none;letter-spacing:0;color:var(--muted)">Itens por pagina</label>
+                    <select id="entities-page-size" style="width:120px">
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="500">500</option>
+                        <option value="1000">1000</option>
+                    </select>
+                </div>
+            </div>
+            <div id="status-entities" class="status"></div>
+        </section>
+
+        <section id="tab-yaml" class="panel">
+            <h2 class="title">Raw YAML</h2>
+            <textarea id="raw-yaml"></textarea>
+            <div class="actions">
+                <button class="btn" id="btn-reload-yaml">Recarregar</button>
+                <button class="btn" id="btn-validate-yaml">Validar</button>
+                <button class="btn primary" id="btn-save-yaml">Salvar YAML</button>
+            </div>
+            <div id="status-yaml" class="status"></div>
+        </section>
+
+        <section id="tab-backup" class="panel">
+            <h2 class="title">Backup / Restore</h2>
+            <div class="actions">
+                <button class="btn primary" id="btn-create-backup">Criar Backup Agora</button>
+                <button class="btn" id="btn-refresh-backups">Atualizar Lista</button>
+            </div>
+            <div class="actions" style="margin-top:10px">
+                <input type="file" id="file-restore-yaml" accept=".yaml,.yml" />
+                <button class="btn danger" id="btn-restore-upload">Restaurar Upload</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Arquivo</th>
+                        <th>Tamanho</th>
+                        <th>Data</th>
+                        <th>Acoes</th>
+                    </tr>
+                </thead>
+                <tbody id="backups-body"></tbody>
+            </table>
+            <div id="status-backup" class="status"></div>
+        </section>
+
+        <section id="tab-diagnostics" class="panel">
+            <h2 class="title">Diagnostico</h2>
+            <div class="actions"><button class="btn" id="btn-refresh-health">Atualizar Diagnostico</button></div>
+            <pre id="diagnostics-json"
+                style="background:#151926;border:1px solid var(--line);border-radius:8px;padding:10px;overflow:auto"></pre>
+            <div id="status-diagnostics" class="status"></div>
+        </section>
+
+        <section id="tab-audit" class="panel">
+            <h2 class="title">Log de Auditoria</h2>
+            <div class="actions">
+                <label style="display:flex;align-items:center;gap:8px;color:var(--muted)">Limite
+                    <select id="audit-limit" style="width:100px">
+                        <option>20</option>
+                        <option selected>50</option>
+                        <option>100</option>
+                        <option>200</option>
+                    </select>
+                </label>
+                <button class="btn" id="btn-refresh-audit">Atualizar</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Data/Hora</th>
+                        <th>Acao</th>
+                        <th>Entity ID</th>
+                        <th>Usuario</th>
+                        <th>Detalhe</th>
+                    </tr>
+                </thead>
+                <tbody id="audit-body"></tbody>
+            </table>
+            <div id="status-audit" class="status"></div>
+        </section>
+    </main>
+
+    <div id="entity-modal" class="modal hidden" role="dialog" aria-modal="true">
+        <div class="modal-bg" data-close-modal="1"></div>
+        <div class="modal-box">
+            <h3 class="modal-title" id="entity-modal-title">Nova Entidade</h3>
+            <div class="row-2">
+                <div class="field"><label>Cômodo *</label><input id="entity-room" /></div>
+                <div class="field">
+                    <label>Media * (autocomplete media_player)</label>
+                    <input id="entity-id" list="media-player-options" placeholder="media_player.echo_escritorio" />
+                    <datalist id="media-player-options"></datalist>
+                </div>
+            </div>
+            <div class="field" style="margin-top:10px">
+                <label>Aliases</label>
+                <div class="actions" style="margin-top:0">
+                    <input id="entity-alias-input" placeholder="Digite um alias e clique adicionar" />
+                    <button class="btn" id="btn-add-alias" type="button">Adicionar Alias</button>
+                </div>
+                <div id="entity-alias-list" class="alias-list"></div>
+            </div>
+            <div class="actions" style="justify-content:flex-end">
+                <button class="btn" id="btn-cancel-entity" type="button">Cancelar</button>
+                <button class="btn primary" id="btn-save-entity" type="button">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="confirm-modal" class="modal hidden" role="dialog" aria-modal="true">
+        <div class="modal-bg" data-close-confirm="1"></div>
+        <div class="modal-box" style="max-width:460px">
+            <h3 class="modal-title">Confirmar</h3>
+            <p id="confirm-message" style="color:var(--muted)">Deseja continuar?</p>
+            <div class="actions" style="justify-content:flex-end">
+                <button class="btn" id="btn-confirm-cancel" type="button">Cancelar</button>
+                <button class="btn danger" id="btn-confirm-ok" type="button">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const state = {
+            config: null,
+            entitiesPage: 1,
+            entitiesTotalPages: 1,
+            entitiesPageSize: 10,
+            entitiesQuery: "",
+            lastReload: "nunca",
+            editKey: null,
+            aliases: [],
+            confirmAction: null,
+        };
+
+        const $ = (id) => document.getElementById(id);
+
+        async function api(path, options = {}) {
+            const res = await fetch(`./api/${path}`, {
+                headers: { "Content-Type": "application/json" },
+                ...options,
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
+            return body;
+        }
+
+        function setStatus(id, message, ok = true) {
+            const el = $(id);
+            el.textContent = message;
+            el.className = `status ${ok ? "ok" : "error"}`;
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+            document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.id === `tab-${tab}`));
+        }
+
+        function refreshKpis() {
+            const cfg = state.config || {};
+            const devices = cfg.devices || {};
+            const roomCount = Object.keys(devices).length;
+            const deviceCount = Object.values(devices).reduce((acc, roomMap) => {
+                if (roomMap && typeof roomMap === "object") return acc + Object.keys(roomMap).length;
+                return acc;
+            }, 0);
+            $("kpi-rooms").textContent = String(roomCount);
+            $("kpi-devices").textContent = String(deviceCount);
+            $("kpi-input").textContent = cfg?.mqtt?.input_topic || "-";
+            $("kpi-reload").textContent = state.lastReload;
+        }
+
+        async function loadConfig() {
+            const cfg = await api("config");
+            state.config = cfg;
+            $("input-topic").value = cfg?.mqtt?.input_topic || "";
+            $("output-topic").value = cfg?.mqtt?.output_topic || "";
+            $("ack-topic").value = cfg?.mqtt?.ack_topic || "";
+            $("dlq-topic").value = cfg?.mqtt?.dlq_topic || "";
+            $("off-keywords").value = (cfg?.commands?.off_keywords || []).join(", ");
+            const raw = await api("config/yaml");
+            $("raw-yaml").value = raw.yaml || "";
+            refreshKpis();
+        }
+
+        function renderAliases() {
+            const box = $("entity-alias-list");
+            box.innerHTML = "";
+            if (!state.aliases.length) {
+                box.innerHTML = '<span style="color:var(--muted);font-size:12px">Nenhum alias adicionado</span>';
+                return;
+            }
+            state.aliases.forEach((alias) => {
+                const item = document.createElement("span");
+                item.className = "alias-pill";
+                item.innerHTML = `<span class="alias-text">${alias}</span><button type="button" data-alias="${encodeURIComponent(alias)}">x</button>`;
+                box.appendChild(item);
+            });
+        }
+
+        async function loadEntities() {
+            const q = encodeURIComponent(state.entitiesQuery);
+            const result = await api(`devices?page=${state.entitiesPage}&page_size=${state.entitiesPageSize}&query=${q}`);
+            state.entitiesTotalPages = result.pagination?.total_pages || 1;
+            $("entities-total").textContent = `Total: ${result.pagination?.total || 0}`;
+            $("entities-page-info").textContent = `Pagina ${result.pagination?.page || 1} de ${state.entitiesTotalPages}`;
+
+            const tbody = $("entities-body");
+            tbody.innerHTML = "";
+            const rows = result.items || [];
+            if (!rows.length) {
+                tbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted)">Nenhuma entidade encontrada</td></tr>';
+                return;
+            }
+
+            rows.forEach((row) => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+          <td class="cell-wrap">${row.room}</td>
+          <td class="cell-wrap">${row.entity_id}</td>
+          <td class="cell-wrap">${(row.aliases || []).join(", ")}</td>
+          <td>
+            <div class="tiny-actions">
+              <button class="btn tiny" data-act="edit" data-key="${encodeURIComponent(row.key)}">Editar</button>
+              <button class="btn tiny danger" data-act="delete" data-key="${encodeURIComponent(row.key)}">Remover</button>
+            </div>
+          </td>
+        `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function openEntityModal(item = null) {
+            state.editKey = item ? item.key : null;
+            $("entity-modal-title").textContent = item ? "Editar Entidade" : "Nova Entidade";
+            $("entity-room").value = item?.room || "";
+            $("entity-id").value = item?.entity_id || "";
+            state.aliases = Array.isArray(item?.aliases) ? [...item.aliases] : [];
+            renderAliases();
+            $("entity-modal").classList.remove("hidden");
+            fetchMediaPlayerSuggestions($("entity-id").value.trim());
+        }
+
+        function closeEntityModal() {
+            $("entity-modal").classList.add("hidden");
+            state.editKey = null;
+            state.aliases = [];
+            $("entity-alias-input").value = "";
+        }
+
+        function openConfirm(message, onConfirm) {
+            $("confirm-message").textContent = message;
+            state.confirmAction = onConfirm;
+            $("confirm-modal").classList.remove("hidden");
+        }
+
+        function closeConfirm() {
+            $("confirm-modal").classList.add("hidden");
+            state.confirmAction = null;
+        }
+
+        async function fetchMediaPlayerSuggestions(query) {
+            try {
+                const ret = await api(`ha/media-players?q=${encodeURIComponent(query || "")}&limit=50`);
+                const list = $("media-player-options");
+                list.innerHTML = "";
+                (ret.items || []).forEach((entityId) => {
+                    const opt = document.createElement("option");
+                    opt.value = entityId;
+                    list.appendChild(opt);
+                });
+            } catch (_) {
+            }
+        }
+
+        async function saveEntityFromModal() {
+            const room = $("entity-room").value.trim();
+            const entityId = $("entity-id").value.trim();
+            if (!room || !entityId) throw new Error("Room e Entity ID sao obrigatorios");
+            if (!entityId.startsWith("media_player.")) throw new Error("Entity ID deve ser do tipo media_player.*");
+
+            const payload = { room, entity_id: entityId, aliases: state.aliases };
+            if (state.editKey) {
+                await api(`devices/${encodeURIComponent(state.editKey)}`, { method: "PUT", body: JSON.stringify(payload) });
+                setStatus("status-entities", "Entidade atualizada com sucesso", true);
+            } else {
+                await api("devices", { method: "POST", body: JSON.stringify(payload) });
+                setStatus("status-entities", "Entidade criada com sucesso", true);
+            }
+            closeEntityModal();
+            await loadEntities();
+            await loadConfig();
+            await loadAudit();
+        }
+
+        async function loadBackups() {
+            const ret = await api("backups");
+            const tbody = $("backups-body");
+            tbody.innerHTML = "";
+            const items = ret.items || [];
+            if (!items.length) {
+                tbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted)">Nenhum backup disponivel</td></tr>';
+                return;
+            }
+            items.forEach((b) => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+          <td>${b.filename}</td>
+          <td>${(b.size / 1024).toFixed(1)} KB</td>
+          <td>${new Date(b.updated_at).toLocaleString("pt-BR")}</td>
+          <td>
+            <div class="tiny-actions">
+              <button class="btn tiny" data-bact="download" data-file="${encodeURIComponent(b.filename)}">Download</button>
+              <button class="btn tiny ok" data-bact="restore" data-file="${encodeURIComponent(b.filename)}">Restaurar</button>
+              <button class="btn tiny danger" data-bact="delete" data-file="${encodeURIComponent(b.filename)}">Remover</button>
+            </div>
+          </td>
+        `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function loadAudit() {
+            const limit = Number($("audit-limit").value || 50);
+            const ret = await api(`audit?limit=${limit}`);
+            const tbody = $("audit-body");
+            tbody.innerHTML = "";
+            const rows = ret.items || [];
+            if (!rows.length) {
+                tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted)">Sem eventos de auditoria</td></tr>';
+                return;
+            }
+            rows.forEach((row) => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+          <td>${new Date(row.created_at || Date.now()).toLocaleString("pt-BR")}</td>
+          <td>${row.action || "-"}</td>
+          <td>${row.entity_id || "-"}</td>
+          <td>${row.user || "system"}</td>
+          <td>${row.detail || ""}</td>
+        `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function loadDiagnostics() {
+            const ret = await api("health");
+            $("diagnostics-json").textContent = JSON.stringify(ret, null, 2);
+            setStatus("status-diagnostics", "Diagnostico atualizado", true);
+        }
+
+        async function runReload() {
+            const ret = await api("reload", { method: "POST" });
+            state.lastReload = new Date().toLocaleString("pt-BR");
+            refreshKpis();
+            setStatus("status-dashboard", ret.detail || "Reload executado", !!ret.ok);
+            await loadAudit();
+        }
+
+        document.querySelectorAll(".tab").forEach((tab) => {
+            tab.addEventListener("click", () => switchTab(tab.dataset.tab));
+        });
+
+        $("btn-save-config").addEventListener("click", async () => {
+            try {
+                const payload = {
+                    mqtt: {
+                        input_topic: $("input-topic").value.trim(),
+                        output_topic: $("output-topic").value.trim(),
+                        ack_topic: $("ack-topic").value.trim(),
+                        dlq_topic: $("dlq-topic").value.trim(),
+                    },
+                    commands: {
+                        off_keywords: $("off-keywords").value.split(",").map((v) => v.trim()).filter(Boolean),
+                    },
+                    devices: state.config?.devices || {},
+                };
+                await api("config", { method: "PUT", body: JSON.stringify(payload) });
+                await loadConfig();
+                await loadAudit();
+                setStatus("status-config", "Configuracao salva", true);
+            } catch (err) {
+                setStatus("status-config", err.message, false);
+            }
+        });
+
+        $("btn-refresh-config").addEventListener("click", async () => {
+            try { await loadConfig(); setStatus("status-config", "Configuracao atualizada", true); }
+            catch (err) { setStatus("status-config", err.message, false); }
+        });
+
+        $("btn-save-yaml").addEventListener("click", async () => {
+            try {
+                await api("config/yaml", { method: "PUT", body: JSON.stringify({ yaml: $("raw-yaml").value }) });
+                await loadConfig();
+                await loadEntities();
+                await loadAudit();
+                setStatus("status-yaml", "YAML salvo com sucesso", true);
+            } catch (err) {
+                setStatus("status-yaml", err.message, false);
+            }
+        });
+
+        $("btn-reload-yaml").addEventListener("click", async () => {
+            try {
+                const ret = await api("config/yaml");
+                $("raw-yaml").value = ret.yaml || "";
+                setStatus("status-yaml", "YAML recarregado", true);
+            } catch (err) {
+                setStatus("status-yaml", err.message, false);
+            }
+        });
+
+        $("btn-validate-yaml").addEventListener("click", async () => {
+            try {
+                const ret = await api("config/yaml/validate", { method: "POST", body: JSON.stringify({ yaml: $("raw-yaml").value }) });
+                if (ret.ok) {
+                    setStatus("status-yaml", "Schema YAML valido", true);
+                } else {
+                    setStatus("status-yaml", `Schema invalido: ${(ret.errors || []).join(" | ")}`, false);
+                }
+            } catch (err) {
+                setStatus("status-yaml", err.message, false);
+            }
+        });
+
+        $("btn-search-entities").addEventListener("click", async () => {
+            try {
+                state.entitiesQuery = $("entities-query").value.trim();
+                state.entitiesPageSize = Math.max(1, Number($("entities-page-size").value || 10));
+                state.entitiesPage = 1;
+                await loadEntities();
+            } catch (err) {
+                setStatus("status-entities", err.message, false);
+            }
+        });
+
+        $("btn-clear-entities").addEventListener("click", async () => {
+            state.entitiesQuery = "";
+            $("entities-query").value = "";
+            state.entitiesPage = 1;
+            await loadEntities();
+        });
+
+        $("entities-page-size").addEventListener("change", async () => {
+            state.entitiesPageSize = Math.max(1, Number($("entities-page-size").value || 10));
+            state.entitiesPage = 1;
+            await loadEntities();
+        });
+
+        $("btn-prev-page").addEventListener("click", async () => {
+            if (state.entitiesPage <= 1) return;
+            state.entitiesPage -= 1;
+            await loadEntities();
+        });
+
+        $("btn-next-page").addEventListener("click", async () => {
+            if (state.entitiesPage >= state.entitiesTotalPages) return;
+            state.entitiesPage += 1;
+            await loadEntities();
+        });
+
+        $("btn-new-entity").addEventListener("click", () => openEntityModal());
+        $("btn-cancel-entity").addEventListener("click", closeEntityModal);
+        document.querySelector('[data-close-modal="1"]').addEventListener("click", closeEntityModal);
+
+        $("btn-add-alias").addEventListener("click", () => {
+            const value = $("entity-alias-input").value.trim();
+            if (!value) return;
+            if (!state.aliases.includes(value)) state.aliases.push(value);
+            $("entity-alias-input").value = "";
+            renderAliases();
+        });
+
+        $("entity-alias-list").addEventListener("click", (ev) => {
+            const btn = ev.target;
+            if (!(btn instanceof HTMLElement)) return;
+            const encoded = btn.getAttribute("data-alias");
+            if (!encoded) return;
+            const alias = decodeURIComponent(encoded);
+            state.aliases = state.aliases.filter((a) => a !== alias);
+            renderAliases();
+        });
+
+        let autocompleteTimer = null;
+        $("entity-id").addEventListener("input", () => {
+            if (autocompleteTimer) clearTimeout(autocompleteTimer);
+            autocompleteTimer = setTimeout(() => {
+                fetchMediaPlayerSuggestions($("entity-id").value.trim());
+            }, 200);
+        });
+
+        $("btn-save-entity").addEventListener("click", async () => {
+            try { await saveEntityFromModal(); }
+            catch (err) { setStatus("status-entities", err.message, false); }
+        });
+
+        $("entities-body").addEventListener("click", async (ev) => {
+            const target = ev.target;
+            if (!(target instanceof HTMLElement)) return;
+            const act = target.getAttribute("data-act");
+            if (!act) return;
+
+            if (act === "edit") {
+                const key = decodeURIComponent(target.getAttribute("data-key") || "");
+                try {
+                    const row = await api(`devices/${encodeURIComponent(key)}`);
+                    openEntityModal(row);
+                } catch (err) {
+                    setStatus("status-entities", err.message, false);
+                }
+            }
+
+            if (act === "delete") {
+                const key = decodeURIComponent(target.getAttribute("data-key") || "");
+                openConfirm("Deseja remover esta entidade?", async () => {
+                    await api(`devices/${encodeURIComponent(key)}`, { method: "DELETE" });
+                    await loadEntities();
+                    await loadConfig();
+                    await loadAudit();
+                    setStatus("status-entities", "Entidade removida", true);
+                });
+            }
+        });
+
+        $("btn-export-devices").addEventListener("click", async () => {
+            try {
+                const ret = await api("devices/yaml");
+                const blob = new Blob([ret.yaml || ""], { type: "application/x-yaml" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "alexa_bridge_devices_export.yaml";
+                a.click();
+                URL.revokeObjectURL(url);
+                await loadAudit();
+            } catch (err) {
+                setStatus("status-entities", err.message, false);
+            }
+        });
+
+        $("btn-import-devices").addEventListener("click", () => $("file-import-devices").click());
+        $("file-import-devices").addEventListener("change", async (ev) => {
+            const file = ev.target.files?.[0];
+            if (!file) return;
+            try {
+                const yaml = await file.text();
+                const ret = await api("devices/import", { method: "POST", body: JSON.stringify({ yaml }) });
+                await loadEntities();
+                await loadConfig();
+                await loadAudit();
+                setStatus("status-entities", `${ret.detail}: ${ret.summary.devices} devices`, true);
+            } catch (err) {
+                setStatus("status-entities", err.message, false);
+            } finally {
+                ev.target.value = "";
+            }
+        });
+
+        $("btn-create-backup").addEventListener("click", async () => {
+            try {
+                await api("backups", { method: "POST" });
+                await loadBackups();
+                await loadAudit();
+                setStatus("status-backup", "Backup criado", true);
+            } catch (err) {
+                setStatus("status-backup", err.message, false);
+            }
+        });
+
+        $("btn-refresh-backups").addEventListener("click", async () => {
+            try { await loadBackups(); setStatus("status-backup", "Lista de backups atualizada", true); }
+            catch (err) { setStatus("status-backup", err.message, false); }
+        });
+
+        $("btn-restore-upload").addEventListener("click", async () => {
+            const file = $("file-restore-yaml").files?.[0];
+            if (!file) {
+                setStatus("status-backup", "Selecione um arquivo YAML para restaurar", false);
+                return;
+            }
+            try {
+                const yaml = await file.text();
+                await api("backups/restore-yaml", { method: "POST", body: JSON.stringify({ yaml }) });
+                await loadConfig();
+                await loadEntities();
+                await loadBackups();
+                await loadAudit();
+                setStatus("status-backup", "Restauracao por upload concluida", true);
+            } catch (err) {
+                setStatus("status-backup", err.message, false);
+            }
+        });
+
+        $("backups-body").addEventListener("click", async (ev) => {
+            const target = ev.target;
+            if (!(target instanceof HTMLElement)) return;
+            const act = target.getAttribute("data-bact");
+            const encoded = target.getAttribute("data-file");
+            if (!act || !encoded) return;
+            const filename = decodeURIComponent(encoded);
+
+            if (act === "download") {
+                const link = document.createElement("a");
+                link.href = `./api/backups/${encodeURIComponent(filename)}/download`;
+                link.download = filename;
+                link.click();
+            }
+
+            if (act === "restore") {
+                openConfirm(`Restaurar backup ${filename}?`, async () => {
+                    await api("backups/restore", { method: "POST", body: JSON.stringify({ filename }) });
+                    await loadConfig();
+                    await loadEntities();
+                    await loadBackups();
+                    await loadAudit();
+                    setStatus("status-backup", "Backup restaurado", true);
+                });
+            }
+
+            if (act === "delete") {
+                openConfirm(`Remover backup ${filename}?`, async () => {
+                    await api(`backups/${encodeURIComponent(filename)}`, { method: "DELETE" });
+                    await loadBackups();
+                    await loadAudit();
+                    setStatus("status-backup", "Backup removido", true);
+                });
+            }
+        });
+
+        document.querySelector('[data-close-confirm="1"]').addEventListener("click", closeConfirm);
+        $("btn-confirm-cancel").addEventListener("click", closeConfirm);
+        $("btn-confirm-ok").addEventListener("click", async () => {
+            if (!state.confirmAction) return;
+            try {
+                await state.confirmAction();
+            } catch (err) {
+                setStatus("status-entities", err.message, false);
+                setStatus("status-backup", err.message, false);
+            } finally {
+                closeConfirm();
+            }
+        });
+
+        $("btn-refresh-health").addEventListener("click", async () => {
+            try { await loadDiagnostics(); }
+            catch (err) { setStatus("status-diagnostics", err.message, false); }
+        });
+
+        $("btn-run-reload").addEventListener("click", async () => {
+            try { await runReload(); }
+            catch (err) { setStatus("status-dashboard", err.message, false); }
+        });
+
+        $("btn-refresh-audit").addEventListener("click", async () => {
+            try { await loadAudit(); setStatus("status-audit", "Auditoria atualizada", true); }
+            catch (err) { setStatus("status-audit", err.message, false); }
+        });
+
+        $("audit-limit").addEventListener("change", async () => {
+            try { await loadAudit(); }
+            catch (err) { setStatus("status-audit", err.message, false); }
+        });
+
+        async function bootstrap() {
+            await loadConfig();
+            await loadEntities();
+            await loadBackups();
+            await loadAudit();
+            await loadDiagnostics();
+        }
+
+        bootstrap().catch((err) => {
+            setStatus("status-dashboard", err.message, false);
+            setStatus("status-config", err.message, false);
+            setStatus("status-entities", err.message, false);
+            setStatus("status-backup", err.message, false);
+            setStatus("status-audit", err.message, false);
+            setStatus("status-diagnostics", err.message, false);
+        });
+    </script>
+</body>
+
+</html>

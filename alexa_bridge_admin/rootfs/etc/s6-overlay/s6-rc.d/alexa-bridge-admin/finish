@@ -1,0 +1,4 @@
+#!/command/with-contenv bashio
+set +e
+
+bashio::log.warning "AlexaBridge Admin stopped"

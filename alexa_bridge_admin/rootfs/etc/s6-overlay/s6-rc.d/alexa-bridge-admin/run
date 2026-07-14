@@ -1,0 +1,29 @@
+#!/command/with-contenv bashio
+set -e
+
+bashio::log.info "Starting AlexaBridge Admin..."
+
+LOG_LEVEL="$(bashio::config 'log_level')"
+
+case "${LOG_LEVEL}" in
+    trace|debug|info|warning|error|critical)
+        ;;
+    notice)
+        LOG_LEVEL="info"
+        ;;
+    fatal)
+        LOG_LEVEL="critical"
+        ;;
+    *)
+        bashio::log.warning "Invalid log_level '${LOG_LEVEL}', falling back to 'info'"
+        LOG_LEVEL="info"
+        ;;
+esac
+
+export PYTHONPATH=/
+
+exec uvicorn app.main:app \
+    --host 0.0.0.0 \
+    --port 8099 \
+    --workers 1 \
+    --log-level "${LOG_LEVEL}"
