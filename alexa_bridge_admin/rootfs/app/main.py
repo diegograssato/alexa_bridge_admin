@@ -15,7 +15,7 @@ from app.api.routes.ha import router as ha_router
 from app.api.routes.reload import router as reload_router
 from app.services.config_service import ConfigService
 
-app = FastAPI(title="AlexaBridge Admin", version="0.1.0")
+app = FastAPI(title="Alexa Bridge Admin", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,

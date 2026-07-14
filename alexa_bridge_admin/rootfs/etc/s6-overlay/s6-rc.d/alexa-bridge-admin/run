@@ -1,7 +1,7 @@
 #!/command/with-contenv bashio
 set -e
 
-bashio::log.info "Starting AlexaBridge Admin..."
+bashio::log.info "Starting Alexa Bridge Admin..."
 
 LOG_LEVEL="$(bashio::config 'log_level')"
 
