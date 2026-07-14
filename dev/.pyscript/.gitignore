@@ -22,3 +22,8 @@ wheels/
 .venv
 *.pyc
 .venv-dev/
+*.yaml
+*.yml
+*.xml
+*.json
+*.jsonl

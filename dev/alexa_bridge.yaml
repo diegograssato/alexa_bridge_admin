@@ -1,0 +1,35 @@
+mqtt:
+  input_topic: alexa/command
+  output_topic: homeassistant/voice/command
+  ack_topic: homeassistant/voice/ack
+  dlq_topic: homeassistant/voice/dlq
+
+commands:
+  off_keywords:
+    - desliga
+    - desligar
+    - turn off
+
+devices:
+  sala:
+    light.sala_principal:
+      aliases:
+        - luz da sala
+        - sala
+    switch.tv_sala:
+      aliases:
+        - televisão
+        - tv
+  quarto:
+    light.quarto_casal:
+      aliases:
+        - luz do quarto
+        - quarto
+    fan.ventilador_quarto:
+      aliases:
+        - ventilador
+  cozinha:
+    light.cozinha:
+      aliases:
+        - luz da cozinha
+        - cozinha

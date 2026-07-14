@@ -5,75 +5,130 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Alexa Bridge Admin</title>
+    <link rel="icon" type="image/svg+xml"
+        href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNiIgZmlsbD0iIzFiMWYyYiIvPjxyZWN0IHg9IjIiIHk9IjE5IiB3aWR0aD0iMjgiIGhlaWdodD0iMyIgZmlsbD0iI2YwOTMyYiIvPjxyZWN0IHg9IjQiIHk9IjEwIiB3aWR0aD0iNCIgaGVpZ2h0PSIxMiIgZmlsbD0iI2YwOTMyYiIvPjxyZWN0IHg9IjI0IiB5PSIxMCIgd2lkdGg9IjQiIGhlaWdodD0iMTIiIGZpbGw9IiNmMDkzMmIiLz48cGF0aCBkPSJNNiAxMCBRMTYgMyAyNiAxMCIgc3Ryb2tlPSIjZjA5MzJiIiBzdHJva2Utd2lkdGg9IjIiIGZpbGw9Im5vbmUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxsaW5lIHgxPSIxMSIgeTE9IjgiIHgyPSIxMSIgeTI9IjE5IiBzdHJva2U9IiNmMDkzMmIiIHN0cm9rZS13aWR0aD0iMS4yIiBvcGFjaXR5PSIuOCIvPjxsaW5lIHgxPSIxNiIgeTE9IjUiIHgyPSIxNiIgeTI9IjE5IiBzdHJva2U9IiNmMDkzMmIiIHN0cm9rZS13aWR0aD0iMS4yIiBvcGFjaXR5PSIuOCIvPjxsaW5lIHgxPSIyMSIgeTE9IjgiIHgyPSIyMSIgeTI9IjE5IiBzdHJva2U9IiNmMDkzMmIiIHN0cm9rZS13aWR0aD0iMS4yIiBvcGFjaXR5PSIuOCIvPjwvc3ZnPg==" />
     <style>
+        /* ── Tokens ─────────────────────────────────────────────── */
         :root {
-            --bg: #11131a;
+            --bg: #0f1218;
             --panel: #1b1f2b;
             --panel-2: #1f2330;
             --line: #2b3142;
+            --line-s: #252b3b;
             --text: #e9edf7;
+            --bright: #f2f7ff;
             --muted: #9aa5bf;
             --accent: #f0932b;
+            --accent-h: #d07a20;
             --danger: #e74c3c;
+            --danger-h: #c0392b;
             --ok: #27ae60;
+            --input-bg: #151926;
+            --th-bg: #131820;
+            --r: 8px;
+            --r-lg: 12px;
+            --shadow: 0 4px 24px rgba(0, 0, 0, .5);
         }
 
-        * {
+        *,
+        *::before,
+        *::after {
             box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            background-color: #0f1218;
         }
 
         body {
-            margin: 0;
             font-family: "Segoe UI", Tahoma, sans-serif;
+            font-size: 14px;
             background: linear-gradient(180deg, #0f1218 0%, #151926 100%);
             color: var(--text);
+            min-height: 100vh;
         }
 
+        /* ── Wrapper ─────────────────────────────────────────────── */
         .app {
             max-width: 1220px;
-            margin: 0 auto;
-            padding: 16px;
+            margin: 14px auto 28px;
+            padding: 22px 20px 28px;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: var(--r-lg);
+            box-shadow: var(--shadow);
         }
 
-        .header h1 {
-            margin: 0;
-            font-size: 40px;
-        }
-
-        .header p {
-            margin: 4px 0 16px;
-            color: var(--muted);
-        }
-
-        .tabs {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
+        /* ── Header ─────────────────────────────────────────────── */
+        .header {
+            padding-bottom: 14px;
+            border-bottom: 1px solid var(--line);
             margin-bottom: 14px;
         }
 
+        .header h1 {
+            font-size: 36px;
+            font-weight: 800;
+            color: var(--bright);
+            line-height: 1.1;
+        }
+
+        .header p {
+            color: var(--muted);
+            font-size: 14px;
+            margin-top: 5px;
+            line-height: 1.5;
+        }
+
+        /* keep only the first <p> subtitle visible */
+        .header p:not(:first-of-type) {
+            display: none;
+        }
+
+        /* ── Tabs ────────────────────────────────────────────────── */
+        .tabs {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--line);
+            margin-bottom: 16px;
+        }
+
         .tab {
-            background: #1a1f2b;
+            background: var(--panel-2);
             border: 1px solid var(--line);
-            color: #c8d2ea;
-            border-radius: 8px;
-            padding: 9px 14px;
+            color: var(--text);
+            border-radius: var(--r);
+            padding: 8px 14px;
+            font-size: 13px;
             font-weight: 600;
             cursor: pointer;
+            transition: background .14s, border-color .14s;
+            white-space: nowrap;
+        }
+
+        .tab:hover {
+            background: #252b3d;
+            border-color: #3a4460;
+            color: var(--bright);
         }
 
         .tab.active {
             background: var(--accent);
-            color: #fff;
             border-color: #c67c2e;
+            color: #fff;
         }
 
+        /* ── Panel ───────────────────────────────────────────────── */
         .panel {
             display: none;
-            background: var(--panel);
+            background: var(--panel-2);
             border: 1px solid var(--line);
-            border-radius: 12px;
-            padding: 16px;
+            border-radius: var(--r-lg);
+            padding: 18px;
             margin-bottom: 14px;
         }
 
@@ -82,10 +137,15 @@
         }
 
         .title {
-            margin: 0 0 12px;
-            font-size: 28px;
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--bright);
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--line);
+            margin-bottom: 14px;
         }
 
+        /* ── Grid helpers ────────────────────────────────────────── */
         .row {
             display: grid;
             gap: 10px;
@@ -108,38 +168,67 @@
             .header h1 {
                 font-size: 28px;
             }
+
+            .app {
+                margin: 0;
+                border-radius: 0;
+                border-left: none;
+                border-right: none;
+            }
         }
 
+        /* ── Form ────────────────────────────────────────────────── */
         .field {
             display: grid;
-            gap: 6px;
+            gap: 5px;
         }
 
         label {
             color: var(--muted);
-            font-size: 12px;
+            font-size: 11px;
+            font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.05em;
+            letter-spacing: .05em;
         }
 
         input,
         textarea,
         select {
             width: 100%;
-            background: #151926;
-            color: var(--text);
+            background: var(--input-bg);
+            color: var(--bright);
             border: 1px solid var(--line);
-            border-radius: 8px;
-            padding: 10px;
-            font-size: 14px;
+            border-radius: var(--r);
+            padding: 9px 12px;
+            font-size: 13px;
+            font-family: inherit;
+            transition: border-color .15s, box-shadow .15s;
+        }
+
+        input:focus,
+        textarea:focus,
+        select:focus {
+            outline: none;
+            border-color: #f2a45c;
+            box-shadow: 0 0 0 2px rgba(240, 147, 43, .2);
+        }
+
+        input::placeholder {
+            color: var(--muted);
         }
 
         textarea {
             min-height: 300px;
             resize: vertical;
-            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+            font-size: 13px;
         }
 
+        select {
+            cursor: pointer;
+        }
+
+        /* ── Buttons ─────────────────────────────────────────────── */
         .actions {
             display: flex;
             flex-wrap: wrap;
@@ -148,79 +237,181 @@
         }
 
         .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
             border: 1px solid var(--line);
-            background: #1a1f2b;
-            color: #d9e3f7;
-            border-radius: 8px;
-            padding: 10px 12px;
+            background: var(--panel);
+            color: var(--text);
+            border-radius: var(--r);
+            padding: 9px 14px;
+            font-size: 13px;
             font-weight: 600;
             cursor: pointer;
+            font-family: inherit;
+            transition: background .14s, border-color .14s;
+            white-space: nowrap;
+        }
+
+        .btn:hover {
+            background: #252b3d;
+            border-color: #3a4460;
+            color: var(--bright);
+        }
+
+        .btn:disabled {
+            opacity: .5;
+            cursor: not-allowed;
+            transform: none;
         }
 
         .btn.primary {
             background: var(--accent);
-            border-color: #c67c2e;
+            border-color: var(--accent);
             color: #fff;
+        }
+
+        .btn.primary:hover {
+            background: var(--accent-h);
+            border-color: var(--accent-h);
         }
 
         .btn.danger {
             background: var(--danger);
-            border-color: #ce3c2c;
+            border-color: var(--danger-h);
             color: #fff;
+        }
+
+        .btn.danger:hover {
+            background: var(--danger-h);
         }
 
         .btn.ok {
             background: #1f5b35;
             border-color: #2f8f53;
+            color: #fff;
+        }
+
+        .btn.ok:hover {
+            background: #1a4d2e;
         }
 
         .btn.ghost {
             background: transparent;
         }
 
+        /* ── KPI cards ───────────────────────────────────────────── */
         .kpis {
             display: grid;
             gap: 10px;
             grid-template-columns: repeat(4, minmax(0, 1fr));
+            margin-bottom: 14px;
+        }
+
+        @media (max-width: 700px) {
+            .kpis {
+                grid-template-columns: repeat(2, 1fr);
+            }
         }
 
         .kpi {
-            background: var(--panel-2);
+            background: var(--panel);
             border: 1px solid var(--line);
-            border-radius: 10px;
-            padding: 12px;
+            border-radius: var(--r-lg);
+            padding: 14px;
         }
 
         .kpi .k {
             color: var(--muted);
-            font-size: 12px;
+            font-size: 11px;
+            font-weight: 700;
             text-transform: uppercase;
+            letter-spacing: .05em;
         }
 
         .kpi .v {
-            margin-top: 6px;
-            font-size: 18px;
+            margin-top: 8px;
+            font-size: 22px;
             font-weight: 700;
+            color: var(--bright);
+        }
+
+        /* ── Table ───────────────────────────────────────────────── */
+        .table-section {
+            border: 1px solid var(--line);
+            border-radius: var(--r-lg);
+            overflow: hidden;
+            margin-top: 14px;
+        }
+
+        /* toolbar: Total + Itens por página */
+        .table-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding: 10px 14px;
+            background: var(--panel);
+            border-bottom: 1px solid var(--line);
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .table-toolbar .per-page {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .table-toolbar select {
+            width: 80px;
+            padding: 6px 8px;
+        }
+
+        .table-overflow {
+            overflow-x: auto;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 10px;
         }
 
         th,
         td {
-            border-bottom: 1px solid var(--line);
-            padding: 10px 8px;
+            padding: 10px 12px;
             text-align: left;
-            font-size: 14px;
+            font-size: 13px;
         }
 
-        th {
+        thead th {
+            background: var(--th-bg);
             color: var(--muted);
-            font-size: 12px;
+            font-size: 11px;
+            font-weight: 700;
             text-transform: uppercase;
+            letter-spacing: .06em;
+            border-bottom: 1px solid var(--line);
+            white-space: nowrap;
+        }
+
+        tbody tr {
+            border-bottom: 1px solid var(--line-s);
+            transition: background .1s;
+        }
+
+        tbody tr:last-child {
+            border-bottom: none;
+        }
+
+        tbody tr:hover {
+            background: #252b3d;
+        }
+
+        td {
+            color: var(--text);
+            vertical-align: middle;
         }
 
         .entities-table {
@@ -255,20 +446,21 @@
 
         .tiny-actions {
             display: flex;
-            gap: 6px;
+            gap: 5px;
         }
 
         .tiny {
-            padding: 6px 9px;
+            padding: 5px 10px;
             font-size: 12px;
         }
 
+        /* ── Table footer (pagination) ───────────────────────────── */
         .table-footer {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 12px;
-            margin-top: 10px;
+            gap: 10px;
+            margin-top: 12px;
             flex-wrap: wrap;
         }
 
@@ -278,20 +470,28 @@
             gap: 8px;
         }
 
+        /* ── Status bar ──────────────────────────────────────────── */
         .status {
             margin-top: 10px;
-            color: var(--muted);
             font-size: 13px;
+            color: var(--muted);
+            padding: 8px 12px;
+            border-radius: var(--r);
         }
 
         .status.ok {
+            background: rgba(39, 174, 96, .1);
+            border: 1px solid rgba(39, 174, 96, .3);
             color: #8de1af;
         }
 
         .status.error {
+            background: rgba(231, 76, 60, .1);
+            border: 1px solid rgba(231, 76, 60, .3);
             color: #ff9a9a;
         }
 
+        /* ── Modals ──────────────────────────────────────────────── */
         .modal.hidden {
             display: none;
         }
@@ -305,24 +505,32 @@
         .modal-bg {
             position: absolute;
             inset: 0;
-            background: rgba(6, 10, 16, 0.72);
+            background: rgba(4, 8, 18, .75);
+            backdrop-filter: blur(2px);
         }
 
         .modal-box {
             position: relative;
             max-width: 700px;
-            margin: 9vh auto;
+            margin: 8vh auto;
             background: #212532;
-            border: 1px solid #353d52;
-            border-radius: 12px;
-            padding: 16px;
+            border: 1px solid var(--line);
+            border-radius: var(--r-lg);
+            padding: 20px;
             z-index: 2;
+            box-shadow: var(--shadow);
         }
 
         .modal-title {
-            margin: 0 0 12px;
+            font-size: 17px;
+            font-weight: 700;
+            color: var(--bright);
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--line-s);
+            margin-bottom: 14px;
         }
 
+        /* ── Alias pills ─────────────────────────────────────────── */
         .alias-list {
             display: flex;
             flex-wrap: wrap;
@@ -335,11 +543,12 @@
             grid-template-columns: minmax(0, 1fr) auto;
             align-items: start;
             column-gap: 8px;
-            background: #2b3346;
-            border: 1px solid #3a4560;
+            background: rgba(240, 147, 43, .15);
+            border: 1px solid rgba(240, 147, 43, .35);
             border-radius: 999px;
             padding: 4px 10px;
             font-size: 12px;
+            color: var(--accent);
             max-width: 100%;
             width: fit-content;
         }
@@ -368,19 +577,15 @@
         <header class="header">
             <h1>Alexa Bridge Admin</h1>
             <p>Bridge em PyScript para integrar Alexa Skill e Home Assistant via MQTT.</p>
-            <p>O fluxo recebe mensagens da skill em um topico de entrada, resolve dispositivo por alias no YAML e
-                publica evento normalizado para automacoes do Home Assistant.</p>
-            <p>Este repositorio tambem contem o addon Alexa Bridge Admin, que fornece interface web para operar o YAML e
-                o ciclo de runtime do bridge.</p>
         </header>
 
         <nav class="tabs" id="tabs">
             <button class="tab active" data-tab="dashboard">Dashboard</button>
-            <button class="tab" data-tab="config">Configuracao</button>
+            <button class="tab" data-tab="config">Configuração</button>
             <button class="tab" data-tab="entities">Entidades</button>
             <button class="tab" data-tab="yaml">Raw YAML</button>
             <button class="tab" data-tab="backup">Backup / Restore</button>
-            <button class="tab" data-tab="diagnostics">Diagnostico</button>
+            <button class="tab" data-tab="diagnostics">Diagnóstico</button>
             <button class="tab" data-tab="audit">Auditoria</button>
         </nav>
 
@@ -388,7 +593,7 @@
             <h2 class="title">Dashboard</h2>
             <div class="kpis">
                 <div class="kpi">
-                    <div class="k">Rooms</div>
+                    <div class="k">Cômodos</div>
                     <div class="v" id="kpi-rooms">-</div>
                 </div>
                 <div class="kpi">
@@ -411,7 +616,7 @@
         </section>
 
         <section id="tab-config" class="panel">
-            <h2 class="title">Configuracao</h2>
+            <h2 class="title">Configuração</h2>
             <div class="row-2">
                 <div class="field"><label>MQTT Input Topic</label><input id="input-topic" /></div>
                 <div class="field"><label>MQTT Output Topic</label><input id="output-topic" /></div>
@@ -443,35 +648,41 @@
                     <button class="btn" id="btn-clear-entities">Limpar</button>
                 </div>
             </div>
-            <div style="margin-top:8px;color:var(--muted)" id="entities-total">Total: 0</div>
-            <table class="entities-table">
-                <thead>
-                    <tr>
-                        <th>Cômodos</th>
-                        <th>Media</th>
-                        <th>Aliases</th>
-                        <th>Ações</th>
-                    </tr>
-                </thead>
-                <tbody id="entities-body"></tbody>
-            </table>
+            <div class="table-section">
+                <div class="table-toolbar">
+                    <span id="entities-total">Total: 0</span>
+                    <div class="per-page">
+                        <label for="entities-page-size" style="text-transform:none;letter-spacing:0">Itens por
+                            página</label>
+                        <select id="entities-page-size">
+                            <option value="10" selected>10</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                            <option value="500">500</option>
+                            <option value="1000">1000</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="table-overflow">
+                    <table class="entities-table">
+                        <thead>
+                            <tr>
+                                <th>Cômodos</th>
+                                <th>Media</th>
+                                <th>Aliases</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="entities-body"></tbody>
+                    </table>
+                </div>
+            </div>
             <div class="table-footer">
                 <div id="entities-page-info" class="status" style="margin:0">Pagina 1 de 1</div>
                 <div class="pager">
                     <button class="btn" id="btn-prev-page">Anterior</button>
                     <button class="btn" id="btn-next-page">Proxima</button>
-                </div>
-                <div class="pager" style="margin-left:auto">
-                    <label for="entities-page-size"
-                        style="text-transform:none;letter-spacing:0;color:var(--muted)">Itens por pagina</label>
-                    <select id="entities-page-size" style="width:120px">
-                        <option value="10" selected>10</option>
-                        <option value="20">20</option>
-                        <option value="50">50</option>
-                        <option value="100">100</option>
-                        <option value="500">500</option>
-                        <option value="1000">1000</option>
-                    </select>
                 </div>
             </div>
             <div id="status-entities" class="status"></div>
@@ -498,17 +709,21 @@
                 <input type="file" id="file-restore-yaml" accept=".yaml,.yml" />
                 <button class="btn danger" id="btn-restore-upload">Restaurar Upload</button>
             </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Arquivo</th>
-                        <th>Tamanho</th>
-                        <th>Data</th>
-                        <th>Acoes</th>
-                    </tr>
-                </thead>
-                <tbody id="backups-body"></tbody>
-            </table>
+            <div class="table-section" style="margin-top:14px">
+                <div class="table-overflow">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Arquivo</th>
+                                <th>Tamanho</th>
+                                <th>Data</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="backups-body"></tbody>
+                    </table>
+                </div>
+            </div>
             <div id="status-backup" class="status"></div>
         </section>
 
@@ -533,18 +748,22 @@
                 </label>
                 <button class="btn" id="btn-refresh-audit">Atualizar</button>
             </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Data/Hora</th>
-                        <th>Acao</th>
-                        <th>Entity ID</th>
-                        <th>Usuario</th>
-                        <th>Detalhe</th>
-                    </tr>
-                </thead>
-                <tbody id="audit-body"></tbody>
-            </table>
+            <div class="table-section" style="margin-top:14px">
+                <div class="table-overflow">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Data/Hora</th>
+                                <th>Ação</th>
+                                <th>Entity ID</th>
+                                <th>Usuário</th>
+                                <th>Detalhe</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-body"></tbody>
+                    </table>
+                </div>
+            </div>
             <div id="status-audit" class="status"></div>
         </section>
     </main>

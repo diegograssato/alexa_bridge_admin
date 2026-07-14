@@ -1,0 +1,27 @@
+services:
+  alexa-bridge-admin:
+    build:
+      context: ..
+      dockerfile: alexa_bridge_admin/Dockerfile
+    container_name: alexa-bridge-dev
+    restart: "no"
+    ports:
+      - "7843:8099"
+    volumes:
+      # YAML de configuração local (simula /homeassistant/pyscript/alexa_bridge.yaml)
+      - ./alexa_bridge.yaml:/homeassistant/pyscript/alexa_bridge.yaml
+      # Script pyscript ficará aqui dentro do container (não precisamos montar)
+      - dev_pyscript:/homeassistant/pyscript
+      # Backups em volume anônimo
+      - dev_backups:/homeassistant/pyscript/backups
+    environment:
+      ALEXA_BRIDGE_CONFIG_PATH: /homeassistant/pyscript/alexa_bridge.yaml
+      ALEXA_BRIDGE_SCRIPT_PATH: /homeassistant/pyscript/alexa_bridge.py
+      # Sem token real — ReloadService e ha.py entram no caminho de fallback/dev
+      SUPERVISOR_TOKEN: ""
+      SUPERVISOR_URL: ""
+      DEV_MODE: "true"
+
+volumes:
+  dev_pyscript:
+  dev_backups:

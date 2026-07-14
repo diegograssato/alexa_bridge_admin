@@ -1,10 +1,495 @@
-# Alexa Bridge (PyScript)
+# Alexa Bridge Admin
 
 Bridge em PyScript para integrar Alexa Skill e Home Assistant via MQTT.
 
 O fluxo recebe mensagens da skill em um topico de entrada, resolve dispositivo por alias no YAML e publica evento normalizado para automacoes do Home Assistant.
+ 
+---
 
-Este repositorio tambem contem o addon AlexaBridge Admin, que fornece interface web para operar o YAML e o ciclo de runtime do bridge.
+## Sumário
+
+- [Implementações e Cenários de Uso](#implementações-e-cenários-de-uso)
+  - [Cenário 1 — MQTT Local (Mosquitto + HA)](#cenário-1--mqtt-local-mosquitto--ha)
+  - [Cenário 2 — Bridge Remota](#cenário-2--bridge-remota)
+  - [Cenário 3 — Integração Completa com Home Assistant](#cenário-3--integração-completa-com-home-assistant)
+  - [Como criar uma Automação com os eventos expostos](#como-criar-uma-automação-com-os-eventos-expostos)
+- [Visão Geral](#visão-geral)
+- [Estrutura do Projeto](#estrutura-do-projeto)
+- [Requisitos](#requisitos)
+- [Instalação](#instalação)
+- [Configuração YAML](#configuração-yaml)
+- [Contratos MQTT](#contratos-mqtt)
+- [Interface AlexaBridge Admin](#interface-alexabridge-admin)
+- [Comportamento de Runtime](#comportamento-de-runtime)
+- [Configuração da Bridge MQTT (Mosquitto)](#configuração-da-bridge-mqtt-mosquitto)
+- [Operação e Troubleshooting](#operação-e-troubleshooting)
+- [Segurança e Boas Práticas](#segurança-e-boas-práticas)
+- [Desenvolvimento Local](#desenvolvimento-local)
+- [Testes](#testes)
+- [Roadmap](#roadmap)
+
+---
+
+## Implementações e Cenários de Uso
+
+### Cenário 1 — MQTT Local (Mosquitto + HA)
+
+Configuração mais simples: Alexa Skill publica no broker Mosquitto local e o PyScript consome diretamente.
+
+```mermaid
+flowchart LR
+    A([🔊 Alexa Skill]) -->|POST webhook| B[Lambda / Skill Backend]
+    B -->|MQTT publish\nalexa/command| C[(Mosquitto\nLocal :1883)]
+    C -->|subscribe\nalexa/command| D[PyScript\nalexa_bridge.py]
+    D -->|publish\nhomeassistant/voice/command| C
+    C -->|event_mqtt_message_received| E[Home Assistant]
+    E -->|trigger| F[Automação HA]
+
+    style A fill:#f0932b,color:#fff
+    style D fill:#1b1f2b,color:#e9edf7,stroke:#2b3142
+    style E fill:#18bcf2,color:#fff
+    style F fill:#27ae60,color:#fff
+```
+
+**Pré-requisitos:**
+- Add-on Mosquitto instalado no Home Assistant
+- Integração MQTT configurada no HA (`Settings → Devices & Services → MQTT`)
+- PyScript habilitado
+
+**Tópicos envolvidos:**
+
+| Direção | Tópico padrão | Descrição |
+|---|---|---|
+| Entrada | `alexa/command` | Comando vindo da Skill |
+| Saída principal | `homeassistant/voice/command` | Evento normalizado para automações |
+| Confirmação | `homeassistant/voice/ack` | ACK de processamento |
+| Erro / DLQ | `homeassistant/voice/dlq` | Mensagens rejeitadas |
+
+---
+
+### Cenário 2 — Bridge Remota
+
+Quando a Skill não consegue alcançar o broker local, usa-se uma bridge no Mosquitto para replicar os tópicos entre um broker público/externo e o broker local.
+
+```mermaid
+flowchart LR
+    A([🔊 Alexa Skill]) -->|MQTT publish| B[(Broker Externo\ntest.mosquitto.org\n:1883)]
+    B <-->|bridge\nalexa/command both| C[(Mosquitto Local\nHA Add-on :1883)]
+    C -->|subscribe| D[PyScript\nalexa_bridge.py]
+    D -->|publish| C
+    C -->|event| E[Home Assistant]
+    E -->|trigger| F[Automação HA]
+
+    style A fill:#f0932b,color:#fff
+    style B fill:#c0392b,color:#fff
+    style D fill:#1b1f2b,color:#e9edf7,stroke:#2b3142
+    style E fill:#18bcf2,color:#fff
+    style F fill:#27ae60,color:#fff
+```
+
+**Configuração da bridge** (ver seção [Configuração da Bridge MQTT](#configuração-da-bridge-mqtt-mosquitto)):
+
+```conf
+connection alexa_bridge_remote
+address test.mosquitto.org:1883
+try_private false
+start_type automatic
+topic alexa/command both 0
+```
+
+---
+
+### Cenário 3 — Integração Completa com Home Assistant
+
+Visão de ponta a ponta: da fala do usuário até a execução da cena/automação no HA.
+
+```mermaid
+sequenceDiagram
+    participant U as 👤 Usuário
+    participant AX as 🔊 Alexa
+    participant SK as Lambda Skill
+    participant MQ as Mosquitto
+    participant PY as PyScript (alexa_bridge)
+    participant HA as Home Assistant
+
+    U->>AX: "Alexa, ligar a luz da sala"
+    AX->>SK: Intent: CustomIntent\nslot: dispositivo="sala"
+    SK->>MQ: PUBLISH alexa/command\n{"DEVICE":"media_player.echo_sala","COMANDO":"ligar luz"}
+    MQ->>PY: MSG alexa/command
+    PY->>PY: Resolve alias → sala\nstate = on
+    PY->>MQ: PUBLISH homeassistant/voice/command\n{"scene":"ligar_luz","destination":"sala","state":"on"}
+    PY->>MQ: PUBLISH homeassistant/voice/ack\n{"status":"ok"}
+    MQ->>HA: event_mqtt_message_received
+    HA->>HA: Automação dispara\nservice: light.turn_on
+    HA-->>U: 💡 Luz acesa
+```
+
+---
+
+### Como criar uma Automação com os eventos expostos
+
+O bridge publica em `homeassistant/voice/command` um payload JSON padronizado. Use o trigger `mqtt` no HA para capturar e executar ações.
+
+#### Exemplo 1 — Ligar luz ao receber comando para um cômodo
+
+```yaml
+# automations.yaml
+- alias: "Alexa → Ligar luz da sala"
+  trigger:
+    - platform: mqtt
+      topic: homeassistant/voice/command
+  condition:
+    - condition: template
+      value_template: >
+        {{ trigger.payload_json.destination == 'sala'
+           and trigger.payload_json.state == 'on' }}
+  action:
+    - service: light.turn_on
+      target:
+        area_id: sala
+```
+
+#### Exemplo 2 — Desligar todos os dispositivos de um cômodo
+
+```yaml
+- alias: "Alexa → Desligar tudo na cozinha"
+  trigger:
+    - platform: mqtt
+      topic: homeassistant/voice/command
+  condition:
+    - condition: template
+      value_template: >
+        {{ trigger.payload_json.destination == 'cozinha'
+           and trigger.payload_json.state == 'off' }}
+  action:
+    - service: homeassistant.turn_off
+      target:
+        area_id: cozinha
+```
+
+#### Exemplo 3 — Acionar cena pelo nome do evento
+
+```yaml
+- alias: "Alexa → Cena pelo nome"
+  trigger:
+    - platform: mqtt
+      topic: homeassistant/voice/command
+  variables:
+    scene_name: "{{ trigger.payload_json.scene }}"
+  action:
+    - service: scene.turn_on
+      target:
+        entity_id: "scene.{{ scene_name }}"
+```
+
+#### Exemplo 4 — Notificação no celular ao receber qualquer comando
+
+```yaml
+- alias: "Alexa → Notificação de comando"
+  trigger:
+    - platform: mqtt
+      topic: homeassistant/voice/command
+  action:
+    - service: notify.mobile_app_meu_celular
+      data:
+        title: "Alexa Bridge"
+        message: >
+          Comando: {{ trigger.payload_json.name }}
+          Cômodo: {{ trigger.payload_json.destination }}
+          Estado: {{ trigger.payload_json.state }}
+```
+
+> **Dica:** Use o **Template Editor** do HA (`Developer Tools → Template`) para testar expressões com o payload antes de salvar a automação.
+
+---
+
+## Visão Geral
+
+- Entrada MQTT: `mqtt.input_topic`
+- Saída MQTT principal: `mqtt.output_topic`
+- Saída MQTT de confirmação: `mqtt.ack_topic`
+- Saída MQTT de erro: `mqtt.dlq_topic`
+- Mapeamento de dispositivos: seção `devices` no YAML
+- Reload de configuração em runtime: serviço `pyscript.alexa_bridge_reload`
+- Versão atual do wrapper: `3.2.0`
+
+---
+
+## Estrutura do Projeto
+
+```
+repository.yaml                         # metadata do repositório de addons
+alexa_bridge_admin/                     # addon instalável Home Assistant
+  config.yaml                           # metadata do addon
+  Dockerfile
+  rootfs/app/                           # backend FastAPI + frontend
+    assets/alexa_bridge.py              # template do script PyScript
+    assets/alexa_bridge.yaml            # template do YAML padrão
+  dev/                                  # ambiente de desenvolvimento local
+    run_dev.sh                          # script de execução sem HA
+    docker-compose.dev.yml
+    alexa_bridge.yaml                   # fixture de configuração
+tests/                                  # testes unitários do backend
+```
+
+---
+
+## Requisitos
+
+- Home Assistant com MQTT configurado
+- PyScript instalado e habilitado
+- Arquivo de configuração em `/config/pyscript/alexa_bridge.yaml`
+
+> Se estiver usando `alexa.bridge.yaml`, copie/renomeie para `alexa_bridge.yaml` em `/config/pyscript`.
+> O addon tenta auto-provisionar `alexa_bridge.py` e `alexa_bridge.yaml` no startup quando ausentes.
+
+---
+
+## Instalação
+
+1. Adicione o repositório do addon no Home Assistant.
+2. Instale **AlexaBridge Admin**.
+3. Abra o addon via Ingress.
+4. Verifique no Diagnóstico se `bridge_script_setup` e `bridge_yaml_setup` estão `ok`.
+5. Execute `pyscript.alexa_bridge_reload` para aplicar a configuração em runtime.
+
+---
+
+## Configuração YAML
+
+```yaml
+mqtt:
+  input_topic: alexa/command
+  output_topic: homeassistant/voice/command
+  ack_topic: homeassistant/voice/ack
+  dlq_topic: homeassistant/voice/dlq
+
+commands:
+  off_keywords:
+    - desliga
+    - desligar
+    - turn off
+
+devices:
+  sala:
+    media_player.echo_show:
+      aliases:
+        - luz da sala
+        - sala
+  quarto:
+    media_player.echo_dot:
+      aliases:
+        - quarto
+        - luz do quarto
+```
+
+**Defaults automáticos quando não configurado:**
+
+| Campo | Padrão |
+|---|---|
+| `mqtt.input_topic` | `alexa/command` |
+| `mqtt.output_topic` | `homeassistant/voice/command` |
+| `mqtt.ack_topic` | `homeassistant/voice/ack` |
+| `mqtt.dlq_topic` | `homeassistant/voice/dlq` |
+| `commands.off_keywords` | `[desliga, desligar, turn off]` |
+
+---
+
+## Contratos MQTT
+
+### Entrada (`input_topic`)
+
+```json
+{
+  "DEVICE": "media_player.echo_show",
+  "COMANDO": "ligar tv",
+  "ORIGEM": "alexa",
+  "INTENT": "CustomIntent",
+  "correlation_id": "req-123"
+}
+```
+
+Também aceita envelope com `content`:
+
+```json
+{
+  "content": {
+    "DEVICE": "media_player.echo_show",
+    "COMANDO": "desliga tv",
+    "ORIGEM": "alexa",
+    "INTENT": "CustomIntent"
+  }
+}
+```
+
+### Saída principal (`output_topic`)
+
+```json
+{
+  "scene": "desliga_tv",
+  "name": "desliga tv",
+  "source_entity": "media_player.echo_show",
+  "source_device_id": "media_player.echo_show",
+  "destination": "sala",
+  "state": "off",
+  "origin": "alexa",
+  "intent": "CustomIntent",
+  "correlation_id": "req-123",
+  "received_topic": "alexa/command",
+  "time": "2026-07-13 21:00:00",
+  "wrapper_version": "3.2.0"
+}
+```
+
+> `state = off` quando `COMANDO` contém qualquer termo de `commands.off_keywords`, caso contrário `state = on`.
+
+### ACK (`ack_topic`)
+
+```json
+{
+  "status": "ok",
+  "detail": "published",
+  "received_topic": "alexa/command",
+  "correlation_id": "req-123",
+  "time": "2026-07-13 21:00:00",
+  "wrapper_version": "3.2.0"
+}
+```
+
+### DLQ (`dlq_topic`)
+
+```json
+{
+  "reason": "device_not_mapped",
+  "raw_payload": "{...}",
+  "received_topic": "alexa/command",
+  "correlation_id": "req-123",
+  "time": "2026-07-13 21:00:00",
+  "wrapper_version": "3.2.0"
+}
+```
+
+**Motivos de DLQ:** `invalid_payload` · `missing_device` · `missing_command` · `device_not_mapped` · `publish_failed`
+
+---
+
+## Interface AlexaBridge Admin
+
+| Aba | Descrição |
+|---|---|
+| Dashboard | KPIs de rooms/devices, botão de reload, status |
+| Configuração | Tópicos MQTT e off_keywords |
+| Entidades | CRUD com aliases, autocomplete, paginação e filtros |
+| Raw YAML | Editor com validação de schema |
+| Backup / Restore | Criar, baixar, restaurar e remover backups |
+| Diagnóstico | Status de setup do script e do YAML |
+| Auditoria | Log de operações |
+
+---
+
+## Comportamento de Runtime
+
+- O trigger MQTT escuta o tópico configurado em `mqtt.input_topic` no boot do script.
+- Em alteração de YAML, execute `pyscript.alexa_bridge_reload` para recarregar mapeamentos em memória.
+- Se alterar `mqtt.input_topic`, recarregue o PyScript para re-assinar o novo tópico.
+
+---
+
+## Configuração da Bridge MQTT (Mosquitto)
+
+### Add-on Mosquitto (Home Assistant)
+
+Adicione em um arquivo de configuração customizado do add-on:
+
+```conf
+connection alexa_bridge_remote
+address test.mosquitto.org:1883
+
+try_private false
+start_type automatic
+cleansession true
+
+topic alexa/command both 0
+```
+
+### Mosquitto standalone (fora do add-on)
+
+Arquivo: `/etc/mosquitto/conf.d/bridge.conf`
+
+```conf
+connection alexa_bridge_remote
+address test.mosquitto.org:1883
+
+try_private false
+start_type automatic
+cleansession true
+
+topic alexa/command both 0
+```
+
+```bash
+sudo systemctl restart mosquitto
+```
+
+---
+
+## Operação e Troubleshooting
+
+| Situação | Ação |
+|---|---|
+| Alterou YAML | Execute `pyscript.alexa_bridge_reload` |
+| Alterou estrutura do script | Recarregue o PyScript |
+| Falha de processamento | Inspecione `dlq_topic` e `ack_topic` |
+| Falha no reload pela UI | Verifique aba Auditoria |
+| Dispositivo não mapeado | Confira `devices` no YAML e aliases |
+
+---
+
+## Segurança e Boas Práticas
+
+- Restrinja ACL dos tópicos MQTT por produtor e consumidor.
+- Evite dados sensíveis em payload e logs.
+- Padronize `correlation_id` para rastreabilidade fim a fim.
+- Monitore erros no tópico de DLQ.
+
+---
+
+## Desenvolvimento Local
+
+Sem necessidade de Home Assistant:
+
+```bash
+cd AlexaBridgeAddon
+./dev/run_dev.sh
+# UI  → http://localhost:7843
+# API → http://localhost:7843/api/docs
+```
+
+Ou via Docker:
+
+```bash
+cd AlexaBridgeAddon/dev
+docker compose -f docker-compose.dev.yml up --build
+```
+
+---
+
+## Testes
+
+```bash
+cd AlexaBridgeAddon
+pytest
+```
+
+---
+
+## Roadmap
+
+- Idempotência por `correlation_id` para evitar reprocessamento.
+- Retry com backoff na publicação MQTT em falhas transientes.
+- Testes de integração para fluxo completo (entrada → saída → ack → dlq).
+- Suporte a múltiplos brokers simultâneos.
+
 
 ## Visao Geral
 

@@ -9,8 +9,12 @@ class ReloadService:
     def __init__(self) -> None:
         self.supervisor_token = os.getenv("SUPERVISOR_TOKEN", "")
         self.base_url = os.getenv("SUPERVISOR_URL", "http://supervisor")
+        self._dev_mode = os.getenv("DEV_MODE", "").lower() in {"1", "true", "yes"}
 
     def reload_pyscript(self) -> dict:
+        if self._dev_mode:
+            return {"ok": True, "detail": "[DEV] pyscript.alexa_bridge_reload simulado com sucesso"}
+
         if not self.supervisor_token:
             return {
                 "ok": False,
