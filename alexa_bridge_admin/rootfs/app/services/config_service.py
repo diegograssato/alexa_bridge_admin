@@ -512,6 +512,19 @@ class ConfigService:
     def _audit_file(self) -> Path:
         return self.config_path.parent / "alexa_bridge_audit.jsonl"
 
+    def _last_event_file(self) -> Path:
+        return self.config_path.parent / "_bridge_last_event.json"
+
+    def get_last_event(self) -> dict[str, Any] | None:
+        """Lê o último evento processado pelo bridge PyScript (sidecar JSON)."""
+        f = self._last_event_file()
+        if not f.exists():
+            return None
+        try:
+            return json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+
     def _backups_dir(self) -> Path:
         return self.config_path.parent / "backups"
 

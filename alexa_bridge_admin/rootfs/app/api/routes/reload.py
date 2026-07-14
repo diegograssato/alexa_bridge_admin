@@ -18,3 +18,10 @@ def reload_bridge() -> dict:
     else:
         config_service.append_audit(action="RELOAD_FAILED", detail=str(ret.get("detail", "falha")))
     return ret
+
+
+@router.get("/bridge/last-event")
+def get_last_event() -> dict:
+    """Retorna o último evento MQTT processado pelo bridge PyScript."""
+    event = config_service.get_last_event()
+    return event if event else {}

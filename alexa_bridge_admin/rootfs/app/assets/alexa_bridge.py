@@ -441,6 +441,28 @@ def _mark_processed(correlation_id: str) -> None:
     _processed_ids[correlation_id] = time.time()
 
 
+def _write_last_event(agent: str, msg_type: str, device: str, room: str, correlation_id: str) -> None:
+    """Grava sidecar JSON com dados do último evento processado.
+
+    O arquivo fica ao lado do alexa_bridge.yaml e é lido pela interface
+    admin para exibir 'Último Agent' e outros KPIs em tempo real.
+    """
+    try:
+        from pathlib import Path as _Path
+        sidecar = _Path(CONFIG_FILE).parent / "_bridge_last_event.json"
+        entry = {
+            "agent":          agent,
+            "type":           msg_type,
+            "device":         device,
+            "room":           room,
+            "correlation_id": correlation_id,
+            "time":           datetime.now().isoformat(),
+        }
+        sidecar.write_text(json.dumps(entry), encoding="utf-8")
+    except Exception as ex:
+        log.warning(f"[AlexaBridge] Erro ao gravar last event: {ex}")
+
+
 def build_correlation_id(data):
     """Gera correlation_id por mensagem para rastreabilidade ponta a ponta."""
     for key in [
@@ -667,6 +689,7 @@ def alexa_bridge(
     )
     if published:
         _mark_processed(correlation_id)
+        _write_last_event(agent, msg_type, device, room, correlation_id)
         publish_ack(topic, correlation_id, "ok", "published")
     else:
         publish_ack(topic, correlation_id, "error", "publish_failed")

@@ -7,6 +7,20 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.2.9] — 2026-07-14
+
+### Added
+- Persistência do KPI **Último Reload** recuperado do histórico de auditoria.
+- Persistência do KPI **Último Agent** via endpoint `/api/bridge/last-event` e sidecar de evento no bridge.
+- Endpoint GET `/api/bridge/last-event` na API de administração.
+- Helper `write_last_event` / `get_last_event` no `ConfigService`.
+
+### Changed
+- `_write_last_event` chamado no bridge após publish bem-sucedido.
+- Dashboard agora inicializa KPIs corretamente mesmo após reload da página.
+
+---
+
 ## [0.2.8] — 2026-07-14
 
 ### Added

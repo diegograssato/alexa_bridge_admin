@@ -1131,18 +1131,24 @@
             await loadAudit();
         }
 
+        async function loadLastReload() {
+            try {
+                const ret = await api("audit?limit=200");
+                const rows = ret.items || [];
+                const entry = rows.find(r => r.action === "RELOAD");
+                if (entry) {
+                    state.lastReload = new Date(entry.created_at).toLocaleString("pt-BR");
+                    refreshKpis();
+                }
+            } catch (_) { }
+        }
+
         async function loadLastAgent() {
             try {
-                const ret = await api("audit?limit=50");
-                const rows = ret.items || [];
-                for (const row of rows) {
-                    const detail = row.detail || "";
-                    const agentMatch = detail.match(/agent=([^,;\s]+)/i);
-                    if (agentMatch) {
-                        state.lastAgent = agentMatch[1];
-                        refreshKpis();
-                        return;
-                    }
+                const ev = await api("bridge/last-event");
+                if (ev && ev.agent) {
+                    state.lastAgent = ev.agent;
+                    refreshKpis();
                 }
             } catch (_) { }
         }
@@ -1465,6 +1471,7 @@
             await loadBackups();
             await loadAudit();
             await loadDiagnostics();
+            await loadLastReload();
             await loadLastAgent();
         }
 
