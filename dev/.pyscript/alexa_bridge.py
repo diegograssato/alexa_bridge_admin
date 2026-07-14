@@ -423,7 +423,7 @@ def alexa_bridge(
     correlation_id = build_correlation_id(data)
     device = safe_str(data.get("DEVICE"))
     command = safe_str(data.get("COMANDO"))
-    origin = safe_str(data.get("ORIGEM", "alexa"))
+    origin = safe_str(data.get("ORIGIN", "alexa"))
     intent = safe_str(data.get("INTENT", ""))
     if not device:
         log.warning(

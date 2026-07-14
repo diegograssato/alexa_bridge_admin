@@ -304,11 +304,17 @@
         .kpis {
             display: grid;
             gap: 10px;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-template-columns: repeat(5, minmax(0, 1fr));
             margin-bottom: 14px;
         }
 
-        @media (max-width: 700px) {
+        @media (max-width: 900px) {
+            .kpis {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        @media (max-width: 600px) {
             .kpis {
                 grid-template-columns: repeat(2, 1fr);
             }
@@ -575,7 +581,7 @@
 <body>
     <main class="app">
         <header class="header">
-            <h1>Alexa Bridge Admin</h1>
+            <h1><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="36" height="36" style="vertical-align:middle;margin-right:10px;flex-shrink:0" aria-hidden="true"><rect width="32" height="32" rx="6" fill="#1b1f2b"/><rect x="2" y="19" width="28" height="3" fill="#f0932b"/><rect x="4" y="10" width="4" height="12" fill="#f0932b"/><rect x="24" y="10" width="4" height="12" fill="#f0932b"/><path d="M6 10 Q16 3 26 10" stroke="#f0932b" stroke-width="2" fill="none" stroke-linecap="round"/><line x1="11" y1="8" x2="11" y2="19" stroke="#f0932b" stroke-width="1.2" opacity=".8"/><line x1="16" y1="5" x2="16" y2="19" stroke="#f0932b" stroke-width="1.2" opacity=".8"/><line x1="21" y1="8" x2="21" y2="19" stroke="#f0932b" stroke-width="1.2" opacity=".8"/></svg>Alexa Bridge Admin</h1>
             <p>Bridge em PyScript para integrar Alexa Skill e Home Assistant via MQTT.</p>
         </header>
 
@@ -608,6 +614,10 @@
                     <div class="k">Ultimo Reload</div>
                     <div class="v" id="kpi-reload">-</div>
                 </div>
+                <div class="kpi">
+                    <div class="k">&#127908; Último Agent</div>
+                    <div class="v" id="kpi-agent" style="font-size:14px;word-break:break-all">-</div>
+                </div>
             </div>
             <div class="actions">
                 <button class="btn" id="btn-run-reload">Executar Reload PyScript</button>
@@ -625,6 +635,63 @@
             </div>
             <div class="field" style="margin-top:10px"><label>Off Keywords (virgula)</label><input id="off-keywords" />
             </div>
+
+            <!-- Seção Segurança -->
+            <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">
+                <div style="font-size:15px;font-weight:700;color:var(--bright);margin-bottom:12px">&#128274; Segurança
+                    (Criptografia de Campos)</div>
+                <div class="row-2" style="align-items:center;margin-bottom:10px">
+                    <label class="checkbox-row"
+                        style="display:flex;align-items:center;gap:8px;color:var(--text);cursor:pointer;font-size:13px;text-transform:none;letter-spacing:0">
+                        <input type="checkbox" id="sec-enabled"
+                            style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer" />
+                        Ativar criptografia de campos
+                    </label>
+                    <div class="field">
+                        <label>Secret (chave de criptografia)</label>
+                        <input type="password" id="sec-secret" placeholder="chave secreta"
+                            autocomplete="new-password" />
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Campos criptografados</label>
+                    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px">
+                        <label
+                            style="display:flex;align-items:center;gap:6px;color:var(--text);font-size:13px;text-transform:none;letter-spacing:0;cursor:pointer">
+                            <input type="checkbox" class="sec-field-check" value="VALUE"
+                                style="accent-color:var(--accent)" /> VALUE
+                        </label>
+                        <label
+                            style="display:flex;align-items:center;gap:6px;color:var(--text);font-size:13px;text-transform:none;letter-spacing:0;cursor:pointer">
+                            <input type="checkbox" class="sec-field-check" value="TYPE"
+                                style="accent-color:var(--accent)" /> TYPE
+                        </label>
+                        <label
+                            style="display:flex;align-items:center;gap:6px;color:var(--text);font-size:13px;text-transform:none;letter-spacing:0;cursor:pointer">
+                            <input type="checkbox" class="sec-field-check" value="DEVICE"
+                                style="accent-color:var(--accent)" /> DEVICE
+                        </label>
+                        <label
+                            style="display:flex;align-items:center;gap:6px;color:var(--text);font-size:13px;text-transform:none;letter-spacing:0;cursor:pointer">
+                            <input type="checkbox" class="sec-field-check" value="AGENT"
+                                style="accent-color:var(--accent)" /> AGENT
+                        </label>
+                        <label
+                            style="display:flex;align-items:center;gap:6px;color:var(--text);font-size:13px;text-transform:none;letter-spacing:0;cursor:pointer">
+                            <input type="checkbox" class="sec-field-check" value="ORIGIN"
+                                style="accent-color:var(--accent)" /> ORIGIN
+                        </label>
+                        <label
+                            style="display:flex;align-items:center;gap:6px;color:var(--text);font-size:13px;text-transform:none;letter-spacing:0;cursor:pointer">
+                            <input type="checkbox" class="sec-field-check" value="INTENT"
+                                style="accent-color:var(--accent)" /> INTENT
+                        </label>
+                    </div>
+                    <div style="margin-top:6px;font-size:11px;color:var(--muted)">Campos marcados terão seu conteúdo
+                        criptografado/descriptografado pelo bridge usando o secret acima.</div>
+                </div>
+            </div>
+
             <div class="actions">
                 <button class="btn primary" id="btn-save-config">Salvar</button>
                 <button class="btn" id="btn-refresh-config">Atualizar</button>
@@ -815,6 +882,7 @@
             entitiesPageSize: 10,
             entitiesQuery: "",
             lastReload: "nunca",
+            lastAgent: "-",
             editKey: null,
             aliases: [],
             confirmAction: null,
@@ -851,10 +919,11 @@
                 if (roomMap && typeof roomMap === "object") return acc + Object.keys(roomMap).length;
                 return acc;
             }, 0);
-            $("kpi-rooms").textContent = String(roomCount);
-            $("kpi-devices").textContent = String(deviceCount);
-            $("kpi-input").textContent = cfg?.mqtt?.input_topic || "-";
-            $("kpi-reload").textContent = state.lastReload;
+            $('kpi-rooms').textContent = String(roomCount);
+            $('kpi-devices').textContent = String(deviceCount);
+            $('kpi-input').textContent = cfg?.mqtt?.input_topic || '-';
+            $('kpi-reload').textContent = state.lastReload;
+            $('kpi-agent').textContent = state.lastAgent;
         }
 
         async function loadConfig() {
@@ -865,6 +934,14 @@
             $("ack-topic").value = cfg?.mqtt?.ack_topic || "";
             $("dlq-topic").value = cfg?.mqtt?.dlq_topic || "";
             $("off-keywords").value = (cfg?.commands?.off_keywords || []).join(", ");
+            // Security
+            const sec = cfg?.security || {};
+            $("sec-enabled").checked = !!sec.enabled;
+            $("sec-secret").value = sec.secret || "";
+            const encFields = Array.isArray(sec.encrypted_fields) ? sec.encrypted_fields : [];
+            document.querySelectorAll(".sec-field-check").forEach(cb => {
+                cb.checked = encFields.includes(cb.value);
+            });
             const raw = await api("config/yaml");
             $("raw-yaml").value = raw.yaml || "";
             refreshKpis();
@@ -1044,18 +1121,41 @@
             await loadAudit();
         }
 
+        async function loadLastAgent() {
+            try {
+                const ret = await api("audit?limit=50");
+                const rows = ret.items || [];
+                for (const row of rows) {
+                    const detail = row.detail || "";
+                    const agentMatch = detail.match(/agent=([^,;\s]+)/i);
+                    if (agentMatch) {
+                        state.lastAgent = agentMatch[1];
+                        refreshKpis();
+                        return;
+                    }
+                }
+            } catch (_) { }
+        }
+
         document.querySelectorAll(".tab").forEach((tab) => {
             tab.addEventListener("click", () => switchTab(tab.dataset.tab));
         });
 
         $("btn-save-config").addEventListener("click", async () => {
             try {
+                const encFields = [...document.querySelectorAll(".sec-field-check")]
+                    .filter(cb => cb.checked).map(cb => cb.value);
                 const payload = {
                     mqtt: {
                         input_topic: $("input-topic").value.trim(),
                         output_topic: $("output-topic").value.trim(),
                         ack_topic: $("ack-topic").value.trim(),
                         dlq_topic: $("dlq-topic").value.trim(),
+                    },
+                    security: {
+                        enabled: $("sec-enabled").checked,
+                        secret: $("sec-secret").value,
+                        encrypted_fields: encFields,
                     },
                     commands: {
                         off_keywords: $("off-keywords").value.split(",").map((v) => v.trim()).filter(Boolean),
@@ -1355,6 +1455,7 @@
             await loadBackups();
             await loadAudit();
             await loadDiagnostics();
+            await loadLastAgent();
         }
 
         bootstrap().catch((err) => {

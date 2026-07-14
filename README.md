@@ -264,6 +264,14 @@ mqtt:
   ack_topic: homeassistant/voice/ack
   dlq_topic: homeassistant/voice/dlq
 
+security:
+  enabled: true
+  secret: minha_chave_secreta
+  encrypted_fields:
+    - VALUE
+    - TYPE
+    - DEVICE
+
 commands:
   off_keywords:
     - desliga
@@ -292,10 +300,67 @@ devices:
 | `mqtt.ack_topic` | `homeassistant/voice/ack` |
 | `mqtt.dlq_topic` | `homeassistant/voice/dlq` |
 | `commands.off_keywords` | `[desliga, desligar, turn off]` |
+| `security.enabled` | `false` |
+| `security.secret` | `""` |
+| `security.encrypted_fields` | `[VALUE, TYPE, DEVICE]` |
 
 ---
 
-## Contratos MQTT
+## Segurança — Criptografia de Campos
+
+A seção `security` permite ativar criptografia simétrica nos campos do payload MQTT antes da publicação (e descriptografia na recepção), protegendo dados sensíveis em trânsito.
+
+### Como funciona
+
+```mermaid
+sequenceDiagram
+    participant SK as Skill Lambda
+    participant MQ as MQTT Broker
+    participant PY as PyScript Bridge
+
+    SK->>SK: Criptografa VALUE, TYPE, DEVICE\ncom secret compartilhado
+    SK->>MQ: PUBLISH alexa/command\n{"VALUE":"<enc>","TYPE":"<enc>","DEVICE":"<enc>",...}
+    MQ->>PY: MSG recebida
+    PY->>PY: Detecta security.enabled=true\nDescriptografa campos configurados
+    PY->>PY: Processa normalmente
+    PY->>MQ: PUBLISH homeassistant/voice/command\n{campos em plaintext}
+```
+
+### Configuração
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `security.enabled` | `bool` | Ativa/desativa descriptografia (`false` por padrão) |
+| `security.secret` | `string` | Chave compartilhada entre Skill e Bridge. **Obrigatório quando `enabled: true`** |
+| `security.encrypted_fields` | `list[string]` | Campos do payload que chegam criptografados |
+
+**Campos aceitos em `encrypted_fields`:**
+
+`VALUE` · `TYPE` · `DEVICE` · `AGENT` · `ORIGIN` · `INTENT`
+
+### Exemplo com criptografia ativa
+
+```yaml
+security:
+  enabled: true
+  secret: minha_chave_super_secreta
+  encrypted_fields:
+    - VALUE
+    - TYPE
+    - DEVICE
+```
+
+> ⚠️ **Importante:** O `secret` deve ser idêntico na Skill Lambda e no `alexa_bridge.yaml`.
+> Mantenha o secret fora do controle de versão — use variáveis de ambiente ou HA Secrets.
+
+### Validação de schema
+
+O campo `security` é validado automaticamente ao salvar via UI ou Raw YAML:
+- `security.enabled` deve ser booleano
+- `security.secret` é obrigatório (não vazio) quando `enabled: true`
+- `security.encrypted_fields` aceita apenas os campos listados acima
+
+---
 
 ### Entrada (`input_topic`)
 
@@ -303,7 +368,7 @@ devices:
 {
   "DEVICE": "media_player.echo_show",
   "COMANDO": "ligar tv",
-  "ORIGEM": "alexa",
+  "ORIGIN": "alexa",
   "INTENT": "CustomIntent",
   "correlation_id": "req-123"
 }
@@ -316,7 +381,7 @@ Também aceita envelope com `content`:
   "content": {
     "DEVICE": "media_player.echo_show",
     "COMANDO": "desliga tv",
-    "ORIGEM": "alexa",
+    "ORIGIN": "alexa",
     "INTENT": "CustomIntent"
   }
 }
@@ -579,7 +644,7 @@ Mensagem esperada:
 {
   "DEVICE": "media_player.echo_show",
   "COMANDO": "ligar tv",
-  "ORIGEM": "alexa",
+  "ORIGIN": "alexa",
   "INTENT": "CustomIntent",
   "correlation_id": "req-123"
 }
@@ -592,7 +657,7 @@ Tambem aceita envelope com content:
   "content": {
     "DEVICE": "media_player.echo_show",
     "COMANDO": "desliga tv",
-    "ORIGEM": "alexa",
+    "ORIGIN": "alexa",
     "INTENT": "CustomIntent"
   }
 }
@@ -814,10 +879,3 @@ uvicorn alexa_bridge_admin.rootfs.app.main:app --reload --port 8099
 cd AlexaBridgeAddon
 pytest
 ```
-
-## Roadmap Recomendado
-
-- Idempotencia por correlation_id/request_id para evitar reprocessamento.
-- Retry com backoff na publicacao MQTT em falhas transientes.
-- Testes unitarios para parser, mapeamento e regras de estado.
-- Testes de integracao para fluxo completo entrada, saida, ack e dlq.

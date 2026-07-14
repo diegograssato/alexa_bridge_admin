@@ -4,6 +4,14 @@ mqtt:
   ack_topic: homeassistant/voice/ack
   dlq_topic: homeassistant/voice/dlq
 
+security:
+  enabled: true
+  secret: grassato
+
+  encrypted_fields:
+    - VALUE
+    - TYPE
+    - DEVICE
 commands:
   off_keywords:
     - desliga

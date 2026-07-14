@@ -1,12 +1,42 @@
 import json
+import time
 import uuid
 import homeassistant.util.yaml as yaml_util
+from base64 import urlsafe_b64encode
+from hashlib import sha256
+from cryptography.fernet import Fernet
 from datetime import datetime
 from typing import Any
 
 CONFIG_FILE = "/config/pyscript/alexa_bridge.yaml"
 
-VERSION = "3.2.0"
+VERSION = "3.3.0"
+
+# ----------------------------------------------------------
+# Idempotência — cache de correlation_ids já processados
+# Estrutura: {correlation_id: timestamp_unix}
+# TTL padrão de 300 s (5 min); entradas expiradas são limpas
+# na recepção de cada nova mensagem.
+# ----------------------------------------------------------
+_IDEMPOTENCY_TTL_SECONDS = 300
+_processed_ids: dict[str, float] = {}
+
+# ----------------------------------------------------------
+# Retry — publicação MQTT com backoff exponencial
+# ----------------------------------------------------------
+_PUBLISH_MAX_RETRIES = 3
+_PUBLISH_INITIAL_DELAY = 0.2  # segundos
+
+# ----------------------------------------------------------
+# Tipos de mensagem aceitos em TYPE (sempre uppercase)
+# ----------------------------------------------------------
+VALID_TYPES = frozenset({
+    "TYPING",
+    "PASSWORD",
+    "TEMPERATURE",
+    "NOTIFICATION",
+    "COMMAND",
+})
 
 DEFAULT_INPUT_TOPIC = "alexa/command"
 DEFAULT_OUTPUT_TOPIC = "homeassistant/voice/command"
@@ -32,6 +62,38 @@ def normalize_key(value: Any) -> str:
     """Normaliza chaves para comparação case-insensitive."""
     return safe_str(value).lower()
 
+# ==========================================================
+# SECRET
+# ==========================================================
+def get_secret():
+    return CONFIG.get(
+        "security",
+        {}
+    ).get(
+        "secret",
+        ""
+    )
+
+def get_key(agent_name):
+
+    secret = get_secret()
+
+    material = f"{secret}:{agent_name}"
+
+    return urlsafe_b64encode(
+        sha256(
+            material.encode("utf-8")
+        ).digest()
+    )
+def decrypt_value(value, agent_name):
+
+    key = get_key(agent_name)
+
+    fernet = Fernet(key)
+
+    return fernet.decrypt(
+        value.encode()
+    ).decode()
 
 # ==========================================================
 # CONFIG
@@ -142,6 +204,12 @@ DLQ_TOPIC = CONFIG.get("mqtt", {}).get(
     "dlq_topic",
     DEFAULT_DLQ_TOPIC
 )
+SECURITY = CONFIG.get("security", {})
+
+log.info(
+    f"[AlexaBridge] Seguranca: enabled={SECURITY.get('enabled', False)} "
+    f"fields={SECURITY.get('encrypted_fields', [])}"
+)
 
 
 # ==========================================================
@@ -193,7 +261,56 @@ def parse_payload(payload):
             data = content
     return data
 
+def decrypt_payload(data):
 
+    security = CONFIG.get(
+        "security",
+        {}
+    )
+
+    if not security.get("enabled", False):
+        return data
+
+    if not data.get("ENCRYPTED", False):
+        return data
+
+    agent_name = (
+        data.get("AGENT")
+        or data.get("ORIGIN")
+        or "unknown"
+    )
+
+    fields = security.get(
+        "encrypted_fields",
+        []
+    )
+
+    for field in fields:
+
+        if field not in data:
+            continue
+
+        try:
+
+            data[field] = decrypt_value(
+                data[field],
+                agent_name
+            )
+
+            log.info(
+                f"[AlexaWrapper] Campo "
+                f"'{field}' descriptografado"
+            )
+
+        except Exception as ex:
+
+            log.error(
+                f"[AlexaWrapper] Erro ao "
+                f"descriptografar "
+                f"'{field}': {ex}"
+            )
+
+    return data
 def get_device_info(device):
     """Busca metadados do dispositivo normalizando a chave de entrada."""
     return DEVICE_INDEX.get(
@@ -267,21 +384,61 @@ def is_allowed_topic(topic):
 
 
 def publish_event(topic, payload):
-    """Publica evento normalizado no tópico MQTT de saída."""
-    try:
-        mqtt.publish(
-            topic=topic,
-            payload=json.dumps(payload),
-            qos=0,
-            retain=False
+    """Publica evento normalizado com retry e backoff exponencial."""
+    delay = _PUBLISH_INITIAL_DELAY
+    last_ex = None
+    for attempt in range(1, _PUBLISH_MAX_RETRIES + 1):
+        try:
+            mqtt.publish(
+                topic=topic,
+                payload=json.dumps(payload),
+                qos=0,
+                retain=False
+            )
+            if attempt > 1:
+                log.info(
+                    f"[AlexaBridge] Publicação bem-sucedida na tentativa {attempt}"
+                )
+            return True
+        except Exception as ex:
+            last_ex = ex
+            log.warning(
+                f"[AlexaBridge] Tentativa {attempt}/{_PUBLISH_MAX_RETRIES} falhou: {ex}"
+            )
+            if attempt < _PUBLISH_MAX_RETRIES:
+                time.sleep(delay)
+                delay *= 2
+    log.error(
+        f"[AlexaBridge] Todas as {_PUBLISH_MAX_RETRIES} tentativas falharam: {last_ex}"
+    )
+    return False
+
+
+def _purge_expired_ids() -> None:
+    """Remove correlation_ids expirados do cache de idempotência."""
+    now = time.time()
+    expired = [
+        cid for cid, ts in _processed_ids.items()
+        if now - ts > _IDEMPOTENCY_TTL_SECONDS
+    ]
+    for cid in expired:
+        del _processed_ids[cid]
+
+
+def _is_duplicate(correlation_id: str) -> bool:
+    """Retorna True se a mensagem já foi processada dentro do TTL."""
+    _purge_expired_ids()
+    if correlation_id in _processed_ids:
+        log.warning(
+            f"[AlexaBridge] Mensagem duplicada ignorada: correlation_id={correlation_id}"
         )
-        
         return True
-    except Exception as ex:
-        log.error(
-            f"[AlexaBridge] Erro ao publicar em MQTT: {ex}"
-        )
-        return False
+    return False
+
+
+def _mark_processed(correlation_id: str) -> None:
+    """Registra correlation_id como processado com timestamp atual."""
+    _processed_ids[correlation_id] = time.time()
 
 
 def build_correlation_id(data):
@@ -328,14 +485,16 @@ def publish_ack(topic, correlation_id, status, detail=""):
     return publish_event(ACK_TOPIC, payload)
 
 
-def log_received(device, entity, room, command):
+def log_received(device, entity, room, command, agent="", msg_type=""):
     """Registra no log os dados principais do comando recebido."""
     log.info(
         f"[AlexaBridge] "
-        f"COMANDO='{command}' "
+        f"TYPE='{msg_type}' "
+        f"VALUE='{command}' "
         f"ROOM='{room}' "
         f"ENTITY='{entity}' "
-        f"DEVICE='{device}'"
+        f"DEVICE='{device}' "
+        f"AGENT='{agent}'"
     )
 
 
@@ -365,6 +524,7 @@ def alexa_bridge_reload():
     global OUTPUT_TOPIC
     global ACK_TOPIC
     global DLQ_TOPIC
+    global SECURITY
     CONFIG = load_config()
     DEVICE_INDEX = build_device_index(CONFIG)
     INPUT_TOPIC = CONFIG.get("mqtt", {}).get(
@@ -383,11 +543,16 @@ def alexa_bridge_reload():
         "dlq_topic",
         DEFAULT_DLQ_TOPIC
     )
+    SECURITY = CONFIG.get("security", {})
     log.info(
         "[AlexaBridge] Configuração recarregada"
     )
     log.info(
         f"[AlexaBridge] INPUT_TOPIC={INPUT_TOPIC} OUTPUT_TOPIC={OUTPUT_TOPIC} ACK_TOPIC={ACK_TOPIC} DLQ_TOPIC={DLQ_TOPIC}"
+    )
+    log.info(
+        f"[AlexaBridge] Segurança: enabled={SECURITY.get('enabled', False)} "
+        f"fields={SECURITY.get('encrypted_fields', [])}"
     )
 
 
@@ -420,11 +585,35 @@ def alexa_bridge(
     if not data:
         publish_dlq(topic, payload, "invalid_payload")
         return
+
+    data = decrypt_payload(data)    
     correlation_id = build_correlation_id(data)
-    device = safe_str(data.get("DEVICE"))
-    command = safe_str(data.get("COMANDO"))
-    origin = safe_str(data.get("ORIGEM", "alexa"))
-    intent = safe_str(data.get("INTENT", ""))
+
+    # --- Idempotência: descarta reprocessamento dentro do TTL ---
+    if _is_duplicate(correlation_id):
+        return
+
+    device   = safe_str(data.get("DEVICE"))
+    raw_type = data.get("TYPE")
+    msg_type = safe_str(raw_type)
+    value    = safe_str(data.get("VALUE"))
+    agent    = safe_str(data.get("AGENT") or data.get("ORIGIN", ""))
+    origin   = safe_str(data.get("ORIGIN") or data.get("ORIGEM", "alexa"))
+    intent   = safe_str(data.get("INTENT", ""))
+    # command é o valor efetivo usado para resolução de estado/cena
+    command  = value
+    # Valida TYPE apenas quando o campo estiver presente no payload
+    if raw_type is not None:
+        normalized_type = safe_str(raw_type).upper()
+        if normalized_type not in VALID_TYPES:
+            log.warning(
+                f"[AlexaBridge] TYPE inválido: '{raw_type}'. "
+                f"Aceitos: {sorted(VALID_TYPES)}"
+            )
+            publish_dlq(topic, payload, "invalid_type", correlation_id)
+            publish_ack(topic, correlation_id, "error", "invalid_type")
+            return
+        msg_type = normalized_type
     if not device:
         log.warning(
             "[AlexaBridge] DEVICE não informado"
@@ -434,7 +623,7 @@ def alexa_bridge(
         return
     if not command:
         log.warning(
-            "[AlexaBridge] COMANDO não informado"
+            "[AlexaBridge] VALUE não informado"
         )
         publish_dlq(topic, payload, "missing_command", correlation_id)
         publish_ack(topic, correlation_id, "error", "missing_command")
@@ -448,39 +637,36 @@ def alexa_bridge(
         publish_dlq(topic, payload, "device_not_mapped", correlation_id)
         publish_ack(topic, correlation_id, "error", "device_not_mapped")
         return
-    room = info["room"]
+    room   = info["room"]
     entity = info["entity"]
-    state = get_state(command)
-    scene = normalize_command(command)
+    state  = get_state(command)
+    scene  = normalize_command(command)
     if scene == "":
         scene = "default"
     result = {
-        "scene": scene,
-        "name": command,
-        "source_entity": entity,
+        "type":             msg_type,
+        "scene":            scene,
+        "name":             command,
+        "value":            value,
+        "agent":            agent,
+        "source_entity":    entity,
         "source_device_id": device,
-        "destination": room,
-        "state": state,
-        "origin": origin,
-        "intent": intent,
-        "correlation_id": correlation_id,
-        "received_topic": topic,
-        "time": datetime.now().strftime(
-            "%Y-%m-%d %H:%M:%S"
-        ),
-        "bridge_version": VERSION
+        "destination":      room,
+        "state":            state,
+        "origin":           origin,
+        "intent":           intent,
+        "correlation_id":   correlation_id,
+        "received_topic":   topic,
+        "time":             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "bridge_version":   VERSION
     }
-    log_received(
-        device,
-        entity,
-        room,
-        command
-    )
+    log_received(device, entity, room, command, agent=agent, msg_type=msg_type)
     published = publish_event(
         OUTPUT_TOPIC,
         result
     )
     if published:
+        _mark_processed(correlation_id)
         publish_ack(topic, correlation_id, "ok", "published")
     else:
         publish_ack(topic, correlation_id, "error", "publish_failed")

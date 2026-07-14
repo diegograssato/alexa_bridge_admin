@@ -23,6 +23,11 @@ class ConfigService:
                 "ack_topic": "homeassistant/voice/ack",
                 "dlq_topic": "homeassistant/voice/dlq",
             },
+            "security": {
+                "enabled": False,
+                "secret": "",
+                "encrypted_fields": ["VALUE", "TYPE", "DEVICE"],
+            },
             "commands": {
                 "off_keywords": ["desliga", "desligar", "turn off"],
             },
@@ -120,6 +125,27 @@ class ConfigService:
                         continue
                     if not isinstance(aliases, list) or not all(isinstance(x, str) for x in aliases):
                         errors.append(f"devices.{room}.{entity_id}.aliases deve ser lista de strings")
+
+        security = parsed.get("security")
+        if security is not None:
+            if not isinstance(security, dict):
+                errors.append("Campo security deve ser um objeto")
+            else:
+                enabled = security.get("enabled")
+                if enabled is not None and not isinstance(enabled, bool):
+                    errors.append("security.enabled deve ser booleano")
+                secret = security.get("secret")
+                if security.get("enabled") and (not isinstance(secret, str) or not secret.strip()):
+                    errors.append("security.secret deve ser string nao vazia quando security.enabled=true")
+                enc_fields = security.get("encrypted_fields")
+                if enc_fields is not None:
+                    _valid = {"VALUE", "TYPE", "DEVICE", "AGENT", "ORIGIN", "INTENT"}
+                    if not isinstance(enc_fields, list):
+                        errors.append("security.encrypted_fields deve ser lista")
+                    else:
+                        for f in enc_fields:
+                            if not isinstance(f, str) or f.upper() not in _valid:
+                                errors.append(f"security.encrypted_fields: campo invalido '{f}'. Aceitos: {sorted(_valid)}")
 
         return {
             "ok": len(errors) == 0,
