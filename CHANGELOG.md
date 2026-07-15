@@ -7,6 +7,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.7.1] — 2026-07-15
+
+### Changed
+- Dashboard: remoção do KPI **Input Topic** da Home, pois o bridge agora opera por MQTT e Webhook.
+
+### Fixed
+- Limpeza do frontend: remoção da atualização de `kpi-input` no refresh de KPIs para manter consistência com o layout atual.
+
 ## [0.7.0] — 2026-07-15
 
 ### Added

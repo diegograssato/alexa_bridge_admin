@@ -1,5 +1,5 @@
 name: Alexa Bridge Admin
-version: 0.7.0
+version: 0.7.1
 slug: alexa_bridge_admin
 description: Bridge em PyScript para integrar Alexa Skill e Home Assistant via MQTT.
 ingress: true

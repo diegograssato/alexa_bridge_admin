@@ -687,10 +687,6 @@
                     <div class="v" id="kpi-devices">-</div>
                 </div>
                 <div class="kpi">
-                    <div class="k">Input Topic</div>
-                    <div class="v" id="kpi-input">-</div>
-                </div>
-                <div class="kpi">
                     <div class="k">Ultimo Reload</div>
                     <div class="v v-compact" id="kpi-reload">-</div>
                 </div>
@@ -1049,7 +1045,6 @@
             }, 0);
             $('kpi-rooms').textContent = String(roomCount);
             $('kpi-devices').textContent = String(deviceCount);
-            $('kpi-input').textContent = cfg?.mqtt?.input_topic || '-';
             $('kpi-reload').textContent = state.lastReload;
             $('kpi-agent').textContent = state.lastAgent;
         }
