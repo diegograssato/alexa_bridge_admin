@@ -535,6 +535,38 @@
             color: #ff9a9a;
         }
 
+        .diag-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 24px;
+            padding: 2px 10px;
+            border-radius: 999px;
+            border: 1px solid transparent;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .03em;
+        }
+
+        .diag-badge.ok {
+            background: rgba(39, 174, 96, .18);
+            border-color: rgba(39, 174, 96, .45);
+            color: #9af0bd;
+        }
+
+        .diag-badge.warn {
+            background: rgba(240, 147, 43, .18);
+            border-color: rgba(240, 147, 43, .45);
+            color: #ffd59f;
+        }
+
+        .diag-badge.error {
+            background: rgba(231, 76, 60, .18);
+            border-color: rgba(231, 76, 60, .45);
+            color: #ffb0b0;
+        }
+
         /* ── Modals ──────────────────────────────────────────────── */
         .modal.hidden {
             display: none;
@@ -859,6 +891,22 @@
         <section id="tab-diagnostics" class="panel">
             <h2 class="title">Diagnostico</h2>
             <div class="actions"><button class="btn" id="btn-refresh-health">Atualizar Diagnostico</button></div>
+            <div class="table-section" style="margin-top:10px;padding:10px">
+                <div style="display:grid;grid-template-columns:repeat(2,minmax(180px,1fr));gap:10px">
+                    <div>
+                        <div style="font-size:11px;color:var(--muted)">Sync do alexa_bridge.py</div>
+                        <div>
+                            <span id="diag-bridge-sync-status" class="diag-badge warn">-</span>
+                        </div>
+                    </div>
+                    <div>
+                        <div style="font-size:11px;color:var(--muted)">Sobrescreveu arquivo existente</div>
+                        <div>
+                            <span id="diag-bridge-sync-overwritten" class="diag-badge warn">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <pre id="diagnostics-json"
                 style="background:#151926;border:1px solid var(--line);border-radius:8px;padding:10px;overflow:auto"></pre>
             <div id="status-diagnostics" class="status"></div>
@@ -1267,6 +1315,42 @@
 
         async function loadDiagnostics() {
             const ret = await api("health");
+            const sync = ret?.bridge_script_sync || {};
+            const status = sync.last_sync_status || "unknown";
+            const statusLabelMap = {
+                script_updated: "Atualizado",
+                script_copied: "Copiado",
+                template_not_found: "Falha: template ausente",
+                setup_exception: "Falha",
+                unknown: "Desconhecido",
+            };
+            const statusLabel = statusLabelMap[status] || "Atenção";
+            const overwritten = sync.ok ? (sync.overwritten ? "Sim" : "Não") : "Indisponível";
+
+            const statusEl = $("diag-bridge-sync-status");
+            const overwrittenEl = $("diag-bridge-sync-overwritten");
+
+            statusEl.className = "diag-badge";
+            overwrittenEl.className = "diag-badge";
+
+            if (sync.ok && (status === "script_updated" || status === "script_copied")) {
+                statusEl.classList.add("ok");
+            } else if (sync.ok) {
+                statusEl.classList.add("warn");
+            } else {
+                statusEl.classList.add("error");
+            }
+
+            if (sync.overwritten) {
+                overwrittenEl.classList.add("ok");
+            } else if (sync.ok) {
+                overwrittenEl.classList.add("warn");
+            } else {
+                overwrittenEl.classList.add("error");
+            }
+
+            statusEl.textContent = statusLabel;
+            overwrittenEl.textContent = overwritten;
             $("diagnostics-json").textContent = JSON.stringify(ret, null, 2);
             setStatus("status-diagnostics", "Diagnostico atualizado", true);
         }
@@ -1330,10 +1414,15 @@
                     },
                     devices: state.config?.devices || {},
                 };
-                await api("config", { method: "PUT", body: JSON.stringify(payload) });
+                const ret = await api("config", { method: "PUT", body: JSON.stringify(payload) });
                 await loadConfig();
                 await loadAudit();
-                setStatus("status-config", "Configuracao salva", true);
+                if (ret?.requires_pyscript_restart) {
+                    setStatus("status-config", "Configuracao salva. Recarregue o PyScript completo para aplicar webhook IDs.", true);
+                    openInfo("Webhook IDs alterados. Para registrar os novos triggers, recarregue o PyScript completo.");
+                } else {
+                    setStatus("status-config", "Configuracao salva", true);
+                }
             } catch (err) {
                 setStatus("status-config", err.message, false);
             }
@@ -1390,11 +1479,16 @@
 
         $("btn-save-yaml").addEventListener("click", async () => {
             try {
-                await api("config/yaml", { method: "PUT", body: JSON.stringify({ yaml: $("raw-yaml").value }) });
+                const ret = await api("config/yaml", { method: "PUT", body: JSON.stringify({ yaml: $("raw-yaml").value }) });
                 await loadConfig();
                 await loadEntities();
                 await loadAudit();
-                setStatus("status-yaml", "YAML salvo com sucesso", true);
+                if (ret?.requires_pyscript_restart) {
+                    setStatus("status-yaml", "YAML salvo. Recarregue o PyScript completo para aplicar webhook IDs.", true);
+                    openInfo("Webhook IDs alterados no YAML. Recarregue o PyScript completo para registrar os novos triggers.");
+                } else {
+                    setStatus("status-yaml", "YAML salvo com sucesso", true);
+                }
             } catch (err) {
                 setStatus("status-yaml", err.message, false);
             }

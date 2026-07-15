@@ -7,6 +7,22 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.7.0] — 2026-07-15
+
+### Added
+- **Sincronização automática do bridge script no startup do add-on**: o arquivo `alexa_bridge.py` do PyScript passa a ser atualizado automaticamente a partir do template empacotado em cada boot.
+- **Sinalização de restart completo do PyScript** nas APIs de configuração (`/api/config` e `/api/config/yaml`) quando `webhook.ids` é alterado.
+- **Diagnóstico operacional aprimorado** com resumo `bridge_script_sync` no `/api/health` (status do sync, cópia e sobrescrita).
+- **Indicadores visuais na aba Diagnóstico**: badges com status amigável (Atualizado/Copiado/Falha) e cor (verde/amarelo/vermelho).
+
+### Changed
+- Startup da aplicação admin agora usa sincronização forçada do bridge script (`sync_bridge_script`) em vez de apenas cópia quando ausente.
+- Mensagens da UI ao salvar Config/YAML passam a orientar reload completo do PyScript quando necessário para aplicar novos webhook IDs.
+
+### Tests
+- Suíte ampliada com testes para `sync_bridge_script` e detecção de mudança em `webhook.ids`.
+- Execução da suíte completa com sucesso (`80 passed`).
+
 ## [0.6.0] — 2026-07-15
 
 ### Added

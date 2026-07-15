@@ -23,11 +23,15 @@ def put_config(payload: dict) -> dict:
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Payload deve ser um objeto JSON")
 
+    previous = service.load()
+    webhook_changed = service.webhook_ids_changed(previous, payload)
     service.save(payload)
     service.append_audit(action="UPDATE_CONFIG", detail="Configuracao salva via API")
     return {
         "ok": True,
         "detail": "Configuracao salva",
+        "requires_pyscript_restart": webhook_changed,
+        "restart_reason": "webhook_ids_changed" if webhook_changed else "",
     }
 
 
@@ -51,12 +55,18 @@ def validate_yaml(payload: RawYamlRequest) -> dict:
 @router.put("/config/yaml")
 def put_yaml(payload: RawYamlRequest) -> dict:
     try:
+        previous = service.load()
         service.save_raw(payload.yaml)
         service.append_audit(action="SAVE_RAW_YAML", detail="YAML salvo via editor")
     except ValueError as ex:
         raise HTTPException(status_code=400, detail=str(ex)) from ex
 
+    current = service.load()
+    webhook_changed = service.webhook_ids_changed(previous, current)
+
     return {
         "ok": True,
         "detail": "YAML salvo",
+        "requires_pyscript_restart": webhook_changed,
+        "restart_reason": "webhook_ids_changed" if webhook_changed else "",
     }

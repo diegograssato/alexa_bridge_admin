@@ -15,7 +15,7 @@ from app.api.routes.ha import router as ha_router
 from app.api.routes.reload import router as reload_router
 from app.services.config_service import ConfigService
 
-app = FastAPI(title="Alexa Bridge Admin", version="0.6.0")
+app = FastAPI(title="Alexa Bridge Admin", version="0.7.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -42,7 +42,7 @@ app.mount("/frontend", StaticFiles(directory=str(frontend_dir)), name="frontend"
 def setup_bridge_script() -> None:
     service = ConfigService()
     try:
-        app.state.bridge_script_setup = service.ensure_bridge_script()
+        app.state.bridge_script_setup = service.sync_bridge_script()
     except Exception as ex:  # pragma: no cover
         app.state.bridge_script_setup = {
             "ok": False,
@@ -64,10 +64,18 @@ def setup_bridge_script() -> None:
 
 @app.get("/api/health")
 def health() -> dict:
+    script_setup = getattr(app.state, "bridge_script_setup", {})
+    yaml_setup = getattr(app.state, "bridge_yaml_setup", {})
     return {
         "ok": True,
-        "bridge_script_setup": getattr(app.state, "bridge_script_setup", {}),
-        "bridge_yaml_setup": getattr(app.state, "bridge_yaml_setup", {}),
+        "bridge_script_setup": script_setup,
+        "bridge_yaml_setup": yaml_setup,
+        "bridge_script_sync": {
+            "last_sync_status": str(script_setup.get("detail", "unknown")),
+            "overwritten": bool(script_setup.get("overwritten", False)),
+            "copied": bool(script_setup.get("copied", False)),
+            "ok": bool(script_setup.get("ok", False)),
+        },
     }
 
 

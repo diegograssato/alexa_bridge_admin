@@ -124,6 +124,42 @@ def test_ensure_bridge_script_does_not_overwrite_existing(tmp_path: Path) -> Non
     assert target.read_text(encoding="utf-8") == "print('existing')\n"
 
 
+def test_sync_bridge_script_overwrites_existing(tmp_path: Path) -> None:
+    cfg_file = tmp_path / "alexa_bridge.yaml"
+    service = ConfigService(str(cfg_file))
+
+    source = tmp_path / "template_alexa_bridge.py"
+    source.write_text("print('new-version')\n", encoding="utf-8")
+    target = tmp_path / "pyscript" / "alexa_bridge.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("print('old-version')\n", encoding="utf-8")
+
+    result = service.sync_bridge_script(str(target), str(source))
+
+    assert result["ok"] is True
+    assert result["copied"] is True
+    assert result["overwritten"] is True
+    assert result["detail"] == "script_updated"
+    assert target.read_text(encoding="utf-8") == "print('new-version')\n"
+
+
+def test_sync_bridge_script_copies_when_missing(tmp_path: Path) -> None:
+    cfg_file = tmp_path / "alexa_bridge.yaml"
+    service = ConfigService(str(cfg_file))
+
+    source = tmp_path / "template_alexa_bridge.py"
+    source.write_text("print('bridge')\n", encoding="utf-8")
+    target = tmp_path / "pyscript" / "alexa_bridge.py"
+
+    result = service.sync_bridge_script(str(target), str(source))
+
+    assert result["ok"] is True
+    assert result["copied"] is True
+    assert result["overwritten"] is False
+    assert result["detail"] == "script_copied"
+    assert target.read_text(encoding="utf-8") == "print('bridge')\n"
+
+
 def test_validate_raw_yaml_schema_ok(tmp_path: Path) -> None:
         cfg_file = tmp_path / "alexa_bridge.yaml"
         service = ConfigService(str(cfg_file))
@@ -189,6 +225,31 @@ security:
         result = service.validate_raw_yaml_schema(raw)
         assert result["ok"] is False
         assert "security.encrypt_payload deve ser booleano" in result["errors"]
+
+
+def test_normalized_webhook_ids_and_change_detection(tmp_path: Path) -> None:
+    cfg_file = tmp_path / "alexa_bridge.yaml"
+    service = ConfigService(str(cfg_file))
+
+    before = {
+        "webhook": {
+            "ids": ["abc", " abc ", "", "invalid/id", "xyz"],
+        }
+    }
+    after_same = {
+        "webhook": {
+            "ids": ["abc", "xyz"],
+        }
+    }
+    after_changed = {
+        "webhook": {
+            "ids": ["abc", "qwe"],
+        }
+    }
+
+    assert service.normalized_webhook_ids(before) == ["abc", "xyz"]
+    assert service.webhook_ids_changed(before, after_same) is False
+    assert service.webhook_ids_changed(before, after_changed) is True
 
 
 def test_ensure_bridge_yaml_copies_template_when_missing(tmp_path: Path) -> None:

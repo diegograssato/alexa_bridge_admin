@@ -77,6 +77,39 @@ class ConfigService:
             raise ValueError("YAML precisa ser um objeto no nivel raiz")
         self.save(parsed)
 
+    def normalized_webhook_ids(self, config: dict[str, Any] | None = None) -> list[str]:
+        """Extrai e normaliza webhook ids do config (inclui fallback legado webhook.id)."""
+        cfg = config if isinstance(config, dict) else {}
+        webhook = cfg.get("webhook")
+        if not isinstance(webhook, dict):
+            return []
+
+        raw_ids: list[Any]
+        ids = webhook.get("ids")
+        if isinstance(ids, list):
+            raw_ids = ids
+        else:
+            legacy_id = str(webhook.get("id", "")).strip()
+            raw_ids = [legacy_id] if legacy_id else []
+
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for item in raw_ids:
+            wid = str(item).strip()
+            if not wid or "/" in wid:
+                continue
+            if wid in seen:
+                continue
+            seen.add(wid)
+            normalized.append(wid)
+            if len(normalized) >= 20:
+                break
+        return normalized
+
+    def webhook_ids_changed(self, before: dict[str, Any], after: dict[str, Any]) -> bool:
+        """Retorna True quando a lista normalizada de webhook ids foi alterada."""
+        return self.normalized_webhook_ids(before) != self.normalized_webhook_ids(after)
+
     def validate_raw_yaml_schema(self, raw_yaml: str) -> dict[str, Any]:
         errors: list[str] = []
         try:
@@ -303,6 +336,36 @@ class ConfigService:
             "ok": True,
             "copied": True,
             "detail": "script_copied",
+            "target": str(target),
+            "source": str(source),
+        }
+
+    def sync_bridge_script(self, script_target_path: str | None = None, template_path: str | None = None) -> dict[str, Any]:
+        """Sincroniza o script do bridge com o template empacotado.
+
+        Diferente de ensure_bridge_script, este método sempre copia o template
+        para o destino, garantindo atualização após update do add-on.
+        """
+        target = Path(script_target_path or os.getenv("ALEXA_BRIDGE_SCRIPT_PATH", "/homeassistant/pyscript/alexa_bridge.py"))
+        source = Path(template_path or os.getenv("ALEXA_BRIDGE_SCRIPT_TEMPLATE", "/app/assets/alexa_bridge.py"))
+
+        if not source.exists():
+            return {
+                "ok": False,
+                "copied": False,
+                "detail": "template_not_found",
+                "target": str(target),
+                "source": str(source),
+            }
+
+        target.parent.mkdir(parents=True, exist_ok=True)
+        overwritten = target.exists()
+        shutil.copy2(source, target)
+        return {
+            "ok": True,
+            "copied": True,
+            "overwritten": overwritten,
+            "detail": "script_updated" if overwritten else "script_copied",
             "target": str(target),
             "source": str(source),
         }

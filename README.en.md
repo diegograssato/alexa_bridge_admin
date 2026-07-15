@@ -457,7 +457,7 @@ Also accepts envelope with `content`:
 | Entities | CRUD with aliases, autocomplete, pagination and filters |
 | Raw YAML | Editor with schema validation |
 | Backup / Restore | Create, download, restore and remove backups (auto retention) |
-| Diagnostics | Script and YAML setup status |
+| Diagnostics | Script and YAML setup status + `alexa_bridge.py` sync badge |
 | Audit | Operations log |
 
 ---
@@ -467,6 +467,8 @@ Also accepts envelope with `content`:
 - The MQTT trigger listens on the topic configured in `mqtt.input_topic` at script boot.
 - When YAML changes, run `pyscript.alexa_bridge_reload` to reload mappings in memory.
 - If `mqtt.input_topic` changes, reload PyScript to re-subscribe to the new topic.
+- On add-on startup, `alexa_bridge.py` is automatically synced with the packaged template version.
+- If `webhook.ids` changes on Config/YAML save, the API returns `requires_pyscript_restart=true` and the UI shows a full PyScript restart warning.
 
 ---
 
@@ -519,6 +521,8 @@ sudo systemctl restart mosquitto
 | Device not mapped | Review `devices` in YAML and aliases |
 | Backup creation blocked | Daily limit reached (10/day) |
 | Old backups/logs cleanup | Automatic retention of 30 days |
+| Changed `webhook.ids` but not applied | Run full PyScript reload (not only `alexa_bridge_reload`) |
+| Check bridge script sync status | Open Diagnostics tab and verify the "Sync do alexa_bridge.py" badge |
 
 ---
 
