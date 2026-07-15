@@ -211,7 +211,7 @@ O bridge publica em `homeassistant/voice/command` um payload JSON padronizado. U
 - Saída MQTT de erro: `mqtt.dlq_topic`
 - Mapeamento de dispositivos: seção `devices` no YAML
 - Reload de configuração em runtime: serviço `pyscript.alexa_bridge_reload`
-- Versão atual do wrapper: `3.2.0`
+- Versão atual do wrapper: `3.3.0`
 
 ---
 
@@ -267,10 +267,6 @@ mqtt:
 security:
   enabled: true
   secret: minha_chave_secreta
-  encrypted_fields:
-    - VALUE
-    - TYPE
-    - DEVICE
 
 commands:
   off_keywords:
@@ -302,52 +298,54 @@ devices:
 | `commands.off_keywords` | `[desliga, desligar, turn off]` |
 | `security.enabled` | `false` |
 | `security.secret` | `""` |
-| `security.encrypted_fields` | `[VALUE, TYPE, DEVICE]` |
 
 ---
 
-## Segurança — Criptografia de Campos
+## Segurança — Assinatura HMAC
 
-A seção `security` permite ativar criptografia simétrica nos campos do payload MQTT antes da publicação (e descriptografia na recepção), protegendo dados sensíveis em trânsito.
+A seção `security` protege o fluxo com **assinatura HMAC-SHA256** (anti-spoofing),
+autenticando a origem da mensagem e evitando injeção de comandos mesmo em broker público.
 
-### Como funciona
+### Assinatura HMAC (anti-spoofing)
 
 ```mermaid
 sequenceDiagram
     participant SK as Skill Lambda
-    participant MQ as MQTT Broker
+    participant MQ as MQTT / HTTP
     participant PY as PyScript Bridge
 
-    SK->>SK: Criptografa VALUE, TYPE, DEVICE\ncom secret compartilhado
-    SK->>MQ: PUBLISH alexa/command\n{"VALUE":"<enc>","TYPE":"<enc>","DEVICE":"<enc>",...}
+    SK->>SK: compute_hmac(content)\n→ HMAC-SHA256(secret, json.dumps(content, sort_keys=True))
+    SK->>MQ: PUBLISH {"signature":"abc123","content":{...}}
     MQ->>PY: MSG recebida
-    PY->>PY: Detecta security.enabled=true\nDescriptografa campos configurados
-    PY->>PY: Processa normalmente
-    PY->>MQ: PUBLISH homeassistant/voice/command\n{campos em plaintext}
+    PY->>PY: verify_hmac(payload)\n→ recomputa e compara com hmac.compare_digest
+    alt Assinatura válida
+        PY->>PY: Processa normalmente
+    else Assinatura inválida
+        PY->>MQ: PUBLISH dlq_topic reason=invalid_signature
+        PY->>PY: return (descarta payload)
+    end
+```
+
+**Webhook HTTP:** a assinatura vai no header `X-Signature` e é computada sobre o body completo:
+```
+X-Signature: <HMAC-SHA256(secret, payload_body)>
 ```
 
 ### Configuração
 
 | Campo | Tipo | Descrição |
 |---|---|---|
-| `security.enabled` | `bool` | Ativa/desativa descriptografia (`false` por padrão) |
+| `security.enabled` | `bool` | Ativa verificação HMAC (`false` por padrão) |
 | `security.secret` | `string` | Chave compartilhada entre Skill e Bridge. **Obrigatório quando `enabled: true`** |
-| `security.encrypted_fields` | `list[string]` | Campos do payload que chegam criptografados |
+| `security.encrypt_payload` | `bool` | Quando `true`, a Skill envia `content` cifrado como `ciphertext` e o bridge decifra antes de processar |
 
-**Campos aceitos em `encrypted_fields`:**
-
-`VALUE` · `TYPE` · `DEVICE` · `AGENT` · `ORIGIN` · `INTENT`
-
-### Exemplo com criptografia ativa
+### Exemplo com segurança ativa
 
 ```yaml
 security:
   enabled: true
   secret: minha_chave_super_secreta
-  encrypted_fields:
-    - VALUE
-    - TYPE
-    - DEVICE
+  encrypt_payload: true
 ```
 
 > ⚠️ **Importante:** O `secret` deve ser idêntico na Skill Lambda e no `alexa_bridge.yaml`.
@@ -358,7 +356,64 @@ security:
 O campo `security` é validado automaticamente ao salvar via UI ou Raw YAML:
 - `security.enabled` deve ser booleano
 - `security.secret` é obrigatório (não vazio) quando `enabled: true`
-- `security.encrypted_fields` aceita apenas os campos listados acima
+- `security.encrypt_payload` deve ser booleano
+
+### Cifragem ponta a ponta (Fernet)
+
+Com `security.encrypt_payload: true`, o payload não trafega em texto plano no broker/webhook.
+
+```json
+{
+  "enc": "fernet-v1",
+  "ciphertext": "gAAAAAB...",
+  "signature": "f7a1..."
+}
+```
+
+- A assinatura HMAC continua obrigatória para autenticar origem e integridade.
+- O bridge só abre o payload com o mesmo `security.secret` da Skill.
+- Em falha de decifragem, o evento é rejeitado com `decrypt_failed`.
+
+---
+
+## Webhook HTTP
+
+Além do trigger MQTT, o bridge suporta receber comandos via HTTP webhook do Home Assistant.
+Basta configurar os IDs em `webhook.ids` no YAML e reiniciar o PyScript — os listeners são registrados automaticamente.
+
+```yaml
+webhook:
+  ids:
+    - "8e4a7f0c5d9f4e2ea3f4d1b7c9a8e6f5"
+    - "a1b2c3d4e5f6"
+```
+
+Suporta até 20 IDs. Deixe `ids: []` para desativar webhook.
+
+Compatibilidade: o formato legado `webhook.id` (ID único) ainda é aceito.
+
+### Fluxo Webhook
+
+```
+Lambda (transport: http)
+  └─ POST /api/webhook/{webhook_id}
+         Headers: X-Signature: <HMAC-SHA256(secret, body)>
+         Body: {"signature": "abc", "content": {...}}
+
+Bridge (@webhook_trigger)
+  ├─ Extrai X-Signature do header
+  ├─ HMAC-SHA256(secret, payload_body) == X-Signature ?
+  │     ❌ inválida → return (sem ACK/DLQ)
+  │     ✅ válida → _process_command("webhook", ...)
+  └─ mesma pipeline MQTT: parse → idempotência → resolve → publish
+```
+
+### Validação de schema
+
+- `webhook.ids` deve ser lista de strings (máximo 20)
+- `webhook.id` legado ainda é aceito
+
+> ⚠️ Alterar `webhook.ids`/`webhook.id` requer recarregar o **PyScript completo** (não apenas `alexa_bridge_reload`), pois o `@webhook_trigger` é registrado apenas no boot.
 
 ---
 
@@ -402,7 +457,7 @@ Também aceita envelope com `content`:
   "correlation_id": "req-123",
   "received_topic": "alexa/command",
   "time": "2026-07-13 21:00:00",
-  "wrapper_version": "3.2.0"
+  "wrapper_version": "3.3.0"
 }
 ```
 
@@ -417,7 +472,7 @@ Também aceita envelope com `content`:
   "received_topic": "alexa/command",
   "correlation_id": "req-123",
   "time": "2026-07-13 21:00:00",
-  "wrapper_version": "3.2.0"
+  "wrapper_version": "3.3.0"
 }
 ```
 
@@ -430,11 +485,11 @@ Também aceita envelope com `content`:
   "received_topic": "alexa/command",
   "correlation_id": "req-123",
   "time": "2026-07-13 21:00:00",
-  "wrapper_version": "3.2.0"
+  "wrapper_version": "3.3.0"
 }
 ```
 
-**Motivos de DLQ:** `invalid_payload` · `missing_device` · `missing_command` · `device_not_mapped` · `publish_failed`
+**Motivos de DLQ:** `invalid_payload` · `invalid_signature` · `invalid_type` · `missing_device` · `missing_command` · `device_not_mapped` · `decrypt_failed` · `publish_failed`
 
 ---
 
@@ -443,10 +498,10 @@ Também aceita envelope com `content`:
 | Aba | Descrição |
 |---|---|
 | Dashboard | KPIs de rooms/devices, botão de reload, status |
-| Configuração | Tópicos MQTT e off_keywords |
+| Configuração | Tópicos MQTT, off_keywords, assinatura HMAC e Webhook |
 | Entidades | CRUD com aliases, autocomplete, paginação e filtros |
 | Raw YAML | Editor com validação de schema |
-| Backup / Restore | Criar, baixar, restaurar e remover backups |
+| Backup / Restore | Criar, baixar, restaurar e remover backups (retenção automática) |
 | Diagnóstico | Status de setup do script e do YAML |
 | Auditoria | Log de operações |
 
@@ -507,6 +562,8 @@ sudo systemctl restart mosquitto
 | Falha de processamento | Inspecione `dlq_topic` e `ack_topic` |
 | Falha no reload pela UI | Verifique aba Auditoria |
 | Dispositivo não mapeado | Confira `devices` no YAML e aliases |
+| Criação de backup bloqueada | Limite diário atingido (10/dia) |
+| Limpeza de backups/logs antigos | Retenção automática de 30 dias |
 
 ---
 
@@ -564,7 +621,7 @@ pytest
 - Saida MQTT de erro: mqtt.dlq_topic
 - Mapeamento de dispositivos: secao devices no YAML
 - Reload de configuracao em runtime: servico pyscript.alexa_bridge_reload
-- Versao atual do wrapper: 3.2.0
+- Versao atual do wrapper: 3.3.0
 
 ## Estrutura do Projeto
 
@@ -680,7 +737,7 @@ Publicado em mqtt.output_topic:
   "correlation_id": "req-123",
   "received_topic": "alexa/command",
   "time": "2026-07-13 21:00:00",
-  "wrapper_version": "3.2.0"
+  "wrapper_version": "3.3.0"
 }
 ```
 
@@ -702,7 +759,7 @@ Publicado em mqtt.ack_topic:
   "received_topic": "alexa/command",
   "correlation_id": "req-123",
   "time": "2026-07-13 21:00:00",
-  "wrapper_version": "3.2.0"
+  "wrapper_version": "3.3.0"
 }
 ```
 
@@ -719,7 +776,7 @@ Publicado em mqtt.dlq_topic quando ocorre rejeicao de entrada:
   "received_topic": "alexa/command",
   "correlation_id": "req-123",
   "time": "2026-07-13 21:00:00",
-  "wrapper_version": "3.2.0"
+  "wrapper_version": "3.3.0"
 }
 ```
 

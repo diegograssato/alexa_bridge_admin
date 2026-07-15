@@ -29,13 +29,16 @@ def list_backups() -> dict:
 
 @router.post("/backups")
 def create_backup() -> dict:
-    item = service.create_backup()
-    service.append_audit(action="BACKUP", detail=f"filename={item['filename']}")
-    return {
-        "ok": True,
-        "detail": "Backup criado",
-        "item": item,
-    }
+    try:
+        item = service.create_backup()
+        service.append_audit(action="BACKUP", detail=f"filename={item['filename']}")
+        return {
+            "ok": True,
+            "detail": "Backup criado",
+            "item": item,
+        }
+    except ValueError as ex:
+        raise HTTPException(status_code=400, detail=str(ex)) from ex
 
 
 @router.get("/backups/{filename}/download")

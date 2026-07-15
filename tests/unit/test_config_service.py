@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from datetime import datetime, timedelta
 import sys
 from pathlib import Path
 
@@ -165,6 +167,30 @@ devices:
     assert len(result["errors"]) >= 2
 
 
+def test_validate_raw_yaml_schema_invalid_encrypt_payload_type(tmp_path: Path) -> None:
+        cfg_file = tmp_path / "alexa_bridge.yaml"
+        service = ConfigService(str(cfg_file))
+
+        raw = """
+mqtt:
+    input_topic: alexa/in
+    output_topic: alexa/out
+    ack_topic: alexa/ack
+    dlq_topic: alexa/dlq
+commands:
+    off_keywords: [desliga]
+devices: {}
+security:
+    enabled: true
+    secret: abc
+    encrypt_payload: "yes"
+"""
+
+        result = service.validate_raw_yaml_schema(raw)
+        assert result["ok"] is False
+        assert "security.encrypt_payload deve ser booleano" in result["errors"]
+
+
 def test_ensure_bridge_yaml_copies_template_when_missing(tmp_path: Path) -> None:
     cfg_file = tmp_path / "alexa_bridge.yaml"
     service = ConfigService(str(cfg_file))
@@ -196,3 +222,101 @@ def test_ensure_bridge_yaml_generates_defaults_when_template_missing(tmp_path: P
     content = target.read_text(encoding="utf-8")
     assert "mqtt:" in content
     assert "devices:" in content
+
+
+def test_create_backup_prunes_files_older_than_30_days(tmp_path: Path) -> None:
+    cfg_file = tmp_path / "alexa_bridge.yaml"
+    cfg_file.write_text("mqtt:\n  input_topic: alexa/command\n", encoding="utf-8")
+    service = ConfigService(str(cfg_file))
+
+    backups_dir = tmp_path / "backups"
+    backups_dir.mkdir(parents=True, exist_ok=True)
+
+    old_1 = backups_dir / "alexa_bridge_backup_old_1.yaml"
+    old_2 = backups_dir / "alexa_bridge_backup_old_2.yaml"
+    old_1.write_text("old1\n", encoding="utf-8")
+    old_2.write_text("old2\n", encoding="utf-8")
+
+    old_ts = (datetime.now() - timedelta(days=40)).timestamp()
+    old_1.touch()
+    old_2.touch()
+    import os
+    os.utime(old_1, (old_ts, old_ts))
+    os.utime(old_2, (old_ts, old_ts))
+
+    created = service.create_backup()
+    files_after = sorted([f.name for f in backups_dir.glob("*.yaml")])
+
+    assert created["filename"] in files_after
+    assert "alexa_bridge_backup_old_1.yaml" not in files_after
+    assert "alexa_bridge_backup_old_2.yaml" not in files_after
+    assert len(files_after) >= 1
+
+
+def test_backup_prune_never_deletes_last_file(tmp_path: Path) -> None:
+    cfg_file = tmp_path / "alexa_bridge.yaml"
+    cfg_file.write_text("mqtt:\n  input_topic: alexa/command\n", encoding="utf-8")
+    service = ConfigService(str(cfg_file))
+
+    backups_dir = tmp_path / "backups"
+    backups_dir.mkdir(parents=True, exist_ok=True)
+    only_file = backups_dir / "alexa_bridge_backup_only.yaml"
+    only_file.write_text("only\n", encoding="utf-8")
+
+    old_ts = (datetime.now() - timedelta(days=60)).timestamp()
+    import os
+    os.utime(only_file, (old_ts, old_ts))
+
+    service._prune_old_backups()
+    assert only_file.exists()
+
+
+def test_audit_prune_keeps_latest_per_action_even_if_older_than_30_days(tmp_path: Path) -> None:
+    cfg_file = tmp_path / "alexa_bridge.yaml"
+    service = ConfigService(str(cfg_file))
+
+    audit_file = tmp_path / "alexa_bridge_audit.jsonl"
+    old_40 = (datetime.now() - timedelta(days=40)).isoformat()
+    old_35 = (datetime.now() - timedelta(days=35)).isoformat()
+
+    seed_rows = [
+        {"created_at": old_40, "action": "UPDATE_CONFIG", "entity_id": "-", "user": "system", "detail": "old"},
+        {"created_at": old_40, "action": "RELOAD", "entity_id": "-", "user": "system", "detail": "very old"},
+        {"created_at": old_35, "action": "RELOAD", "entity_id": "-", "user": "system", "detail": "less old"},
+    ]
+    with audit_file.open("w", encoding="utf-8") as f:
+        for row in seed_rows:
+            f.write(json.dumps(row, ensure_ascii=True) + "\n")
+
+    service.append_audit(action="BACKUP", detail="new backup")
+
+    rows_after = service.list_audits(limit=500)
+    actions = [str(x.get("action")) for x in rows_after]
+
+    assert "BACKUP" in actions
+    assert "UPDATE_CONFIG" in actions
+    assert "RELOAD" in actions
+
+    # Para RELOAD antigo, mantém apenas o mais recente desse tipo.
+    reload_rows = [r for r in rows_after if r.get("action") == "RELOAD"]
+    assert len(reload_rows) == 1
+    assert reload_rows[0].get("detail") == "less old"
+
+
+def test_create_backup_limits_to_10_per_day(tmp_path: Path) -> None:
+    cfg_file = tmp_path / "alexa_bridge.yaml"
+    cfg_file.write_text("mqtt:\n  input_topic: alexa/command\n", encoding="utf-8")
+    service = ConfigService(str(cfg_file))
+
+    backups_dir = tmp_path / "backups"
+    backups_dir.mkdir(parents=True, exist_ok=True)
+
+    for idx in range(10):
+        f = backups_dir / f"alexa_bridge_backup_seed_{idx}.yaml"
+        f.write_text(f"seed {idx}\n", encoding="utf-8")
+
+    try:
+        service.create_backup()
+        assert False, "Era esperado erro de limite diário"
+    except ValueError as ex:
+        assert "máximo de 10 backups por dia" in str(ex)

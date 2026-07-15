@@ -4,14 +4,16 @@ mqtt:
   ack_topic: homeassistant/voice/ack
   dlq_topic: homeassistant/voice/dlq
 
+# Webhook HTTP opcional (PyScript @webhook_trigger)
+# Se webhook.ids tiver valores, o bridge registra listeners automaticamente.
+# Alterar os ids requer recarregar o PyScript completo (não apenas alexa_bridge_reload).
+webhook:
+  ids: [] # ex: ["8e4a7f0c5d9f4e2ea3f4d1b7c9a8e6f5", "a1b2c3d4e5f6"]
+
 security:
   enabled: true
   secret: grassato
-
-  encrypted_fields:
-    - VALUE
-    - TYPE
-    - DEVICE
+  encrypt_payload: false # true: Skill envia content cifrado (ciphertext)
 commands:
   off_keywords:
     - desliga

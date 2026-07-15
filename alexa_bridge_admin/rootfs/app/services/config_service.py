@@ -3,11 +3,16 @@ from __future__ import annotations
 import os
 import json
 import shutil
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+
+BACKUP_RETENTION_DAYS = 30
+AUDIT_RETENTION_DAYS = 30
+MAX_BACKUPS_PER_DAY = 10
 
 
 class ConfigService:
@@ -26,7 +31,10 @@ class ConfigService:
             "security": {
                 "enabled": False,
                 "secret": "",
-                "encrypted_fields": ["VALUE", "TYPE", "DEVICE"],
+                "encrypt_payload": False,
+            },
+            "webhook": {
+                "ids": [],
             },
             "commands": {
                 "off_keywords": ["desliga", "desligar", "turn off"],
@@ -137,15 +145,32 @@ class ConfigService:
                 secret = security.get("secret")
                 if security.get("enabled") and (not isinstance(secret, str) or not secret.strip()):
                     errors.append("security.secret deve ser string nao vazia quando security.enabled=true")
-                enc_fields = security.get("encrypted_fields")
-                if enc_fields is not None:
-                    _valid = {"VALUE", "TYPE", "DEVICE", "AGENT", "ORIGIN", "INTENT"}
-                    if not isinstance(enc_fields, list):
-                        errors.append("security.encrypted_fields deve ser lista")
+                encrypt_payload = security.get("encrypt_payload")
+                if encrypt_payload is not None and not isinstance(encrypt_payload, bool):
+                    errors.append("security.encrypt_payload deve ser booleano")
+
+        webhook = parsed.get("webhook")
+        if webhook is not None:
+            if not isinstance(webhook, dict):
+                errors.append("Campo webhook deve ser um objeto")
+            else:
+                wh_ids = webhook.get("ids")
+                if wh_ids is not None:
+                    if not isinstance(wh_ids, list):
+                        errors.append("webhook.ids deve ser uma lista")
                     else:
-                        for f in enc_fields:
-                            if not isinstance(f, str) or f.upper() not in _valid:
-                                errors.append(f"security.encrypted_fields: campo invalido '{f}'. Aceitos: {sorted(_valid)}")
+                        if len(wh_ids) > 20:
+                            errors.append("webhook.ids suporta no máximo 20 itens")
+                        for wid in wh_ids:
+                            w = str(wid).strip()
+                            if not w:
+                                errors.append("webhook.ids não pode conter itens vazios")
+                            elif "/" in w:
+                                errors.append(f"webhook.ids contém ID inválido '{w}' (não pode conter '/')")
+                # Compatibilidade com formato legado (id único)
+                wh_id = str(webhook.get("id", "")).strip()
+                if wh_id and "/" in wh_id:
+                    errors.append("webhook.id não pode conter '/'")
 
         return {
             "ok": len(errors) == 0,
@@ -208,10 +233,18 @@ class ConfigService:
 
         backups_dir = self._backups_dir()
         backups_dir.mkdir(parents=True, exist_ok=True)
+
+        if self._count_backups_today() >= MAX_BACKUPS_PER_DAY:
+            raise ValueError("Limite diário atingido: máximo de 10 backups por dia")
+
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"alexa_bridge_backup_{timestamp}.yaml"
         target = backups_dir / filename
         shutil.copy2(self.config_path, target)
+
+        # Retenção: remove backups com mais de 30 dias, sem deixar o diretório vazio.
+        self._prune_old_backups()
+
         return self._backup_meta(target)
 
     def list_backups(self) -> list[dict[str, Any]]:
@@ -319,6 +352,9 @@ class ConfigService:
         file.parent.mkdir(parents=True, exist_ok=True)
         with file.open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=True) + "\n")
+
+        # Retenção: remove eventos >30 dias, preservando ao menos 1 por tipo de ação.
+        self._prune_old_audits()
 
     def list_audits(self, limit: int = 50) -> list[dict[str, Any]]:
         file = self._audit_file()
@@ -553,3 +589,109 @@ class ConfigService:
 
     def _ensure_parent_dir(self) -> None:
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def _prune_old_backups(self) -> None:
+        backups_dir = self._backups_dir()
+        if not backups_dir.exists():
+            return
+
+        files = [f for f in backups_dir.glob("*.yaml") if f.is_file()]
+        if len(files) <= 1:
+            return
+
+        cutoff = datetime.now() - timedelta(days=BACKUP_RETENTION_DAYS)
+        files.sort(key=lambda f: f.stat().st_mtime)
+
+        remaining = len(files)
+        for file in files:
+            if remaining <= 1:
+                break
+            modified_at = datetime.fromtimestamp(file.stat().st_mtime)
+            if modified_at < cutoff:
+                try:
+                    file.unlink()
+                    remaining -= 1
+                except FileNotFoundError:
+                    continue
+
+    def _prune_old_audits(self) -> None:
+        file = self._audit_file()
+        if not file.exists() or not file.is_file():
+            return
+
+        rows: list[dict[str, Any]] = []
+        with file.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(item, dict):
+                    rows.append(item)
+
+        if not rows:
+            return
+
+        cutoff = datetime.now() - timedelta(days=AUDIT_RETENTION_DAYS)
+
+        parsed_times: list[datetime | None] = []
+        for row in rows:
+            created_at_raw = row.get("created_at")
+            parsed: datetime | None = None
+            if isinstance(created_at_raw, str) and created_at_raw.strip():
+                text = created_at_raw.strip()
+                if text.endswith("Z"):
+                    text = text[:-1] + "+00:00"
+                try:
+                    parsed = datetime.fromisoformat(text)
+                except ValueError:
+                    parsed = None
+            parsed_times.append(parsed)
+
+        # Sempre manter o evento mais recente de cada tipo (action), mesmo se antigo.
+        keep_indexes: set[int] = set()
+        latest_per_action: dict[str, int] = {}
+        for idx, row in enumerate(rows):
+            action = str(row.get("action") or "UNKNOWN")
+            current_best_idx = latest_per_action.get(action)
+            if current_best_idx is None:
+                latest_per_action[action] = idx
+                continue
+
+            current_best_time = parsed_times[current_best_idx] or datetime.min
+            candidate_time = parsed_times[idx] or datetime.min
+            if candidate_time >= current_best_time:
+                latest_per_action[action] = idx
+
+        keep_indexes.update(latest_per_action.values())
+
+        # Mantém também todos os eventos dentro da janela de retenção.
+        for idx, parsed in enumerate(parsed_times):
+            if parsed is not None and parsed >= cutoff:
+                keep_indexes.add(idx)
+
+        kept_rows = [rows[idx] for idx in range(len(rows)) if idx in keep_indexes]
+
+        tmp = file.with_suffix(".tmp")
+        with tmp.open("w", encoding="utf-8") as f:
+            for item in kept_rows:
+                f.write(json.dumps(item, ensure_ascii=True) + "\n")
+        tmp.replace(file)
+
+    def _count_backups_today(self) -> int:
+        backups_dir = self._backups_dir()
+        if not backups_dir.exists():
+            return 0
+
+        today = datetime.now().date()
+        count = 0
+        for file in backups_dir.glob("*.yaml"):
+            if not file.is_file():
+                continue
+            modified = datetime.fromtimestamp(file.stat().st_mtime)
+            if modified.date() == today:
+                count += 1
+        return count

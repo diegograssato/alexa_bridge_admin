@@ -7,6 +7,83 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.6.0] — 2026-07-15
+
+### Added
+- **Confidencialidade ponta a ponta**: suporte a payload cifrado com `Fernet` entre Skill e bridge (`security.encrypt_payload`).
+- **Envelope cifrado**: novo formato `{ "enc": "fernet-v1", "ciphertext": "...", "signature": "..." }`.
+- **Validação de schema** para `security.encrypt_payload` no backend de configuração.
+- **Controle na interface admin**: opção para ativar/desativar cifragem de payload.
+
+### Changed
+- Verificação HMAC atualizada para assinar/verificar a mesma base em payload plaintext e cifrado.
+- Template de configuração `alexa_bridge.yaml` atualizado com `security.encrypt_payload`.
+
+### Fixed
+- Fluxo de processamento agora rejeita payload cifrado inválido com rastreabilidade (`decrypt_failed`).
+
+### Tests
+- Suíte atualizada e validada com sucesso (`77 passed`).
+
+## [0.5.0] — 2026-07-15
+
+### Added
+- **Webhook multi-ID**: suporte a `webhook.ids` (até 20 IDs) no bridge PyScript e na interface admin.
+- **UX de configuração**: cadastro de Webhook IDs no padrão input+botão com listagem em tabela.
+- **Validações com modal padronizado**: mensagens de limite/duplicidade usando o mesmo modal da aplicação.
+- **Limites operacionais**:
+  - Máximo de 5 aliases por entidade no modal de cadastro/edição.
+  - Máximo de 10 backups por dia na API (`POST /api/backups`).
+- **Retenção automática de dados**:
+  - Backups: remove arquivos com mais de 30 dias ao criar novo backup, preservando ao menos 1 backup.
+  - Auditoria: remove eventos com mais de 30 dias ao inserir novo evento, preservando ao menos 1 evento por `action`.
+
+### Changed
+- Fluxo de Webhook simplificado: remove toggle `webhook.enabled` e ativa listeners automaticamente quando houver `webhook.id`/`webhook.ids`.
+- UI de aliases migrada de pills para tabela com ações e confirmação de remoção.
+- Mensagens de erro de backup (incluindo limite diário) agora também exibidas em modal padronizado.
+
+### Fixed
+- Correção de consistência de assinatura HTTP (`X-Signature`) para evitar divergência entre conteúdo assinado e body enviado.
+
+### Tests
+- Ampliação da suíte unitária para retenção e limite diário de backups.
+- Execução da suíte completa com sucesso (`76 passed`).
+
+## [0.4.0] — 2026-07-15
+
+### Added
+- **Assinatura HMAC-SHA256** (`verify_hmac`): autentica a origem do payload antes de processar. Usa `hmac.compare_digest` para prevenir timing attacks. Payloads sem assinatura são aceitos no modo retrocompatível.
+- **Webhook HTTP trigger** opcional (`@webhook_trigger`): permite receber comandos via HTTP POST com verificação de assinatura no header `X-Signature`. Registrado condicionalmente via `webhook.enabled + webhook.id` no YAML.
+- Seção **`webhook`** no `alexa_bridge.yaml` e na interface admin (aba Configuração): campos `enabled` e `id`.
+- Função `_process_command(source, raw_payload, topic, ...)`: núcleo de processamento compartilhado entre trigger MQTT e Webhook, eliminando duplicidade.
+- Validação de schema para `webhook.enabled` e `webhook.id` no `config_service.py`.
+- DLQ reason `invalid_signature` para payloads com assinatura inválida.
+- Bridge script version: `3.3.0`.
+
+### Changed
+- `alexa_bridge()` MQTT handler simplificado: agora delega para `_process_command`.
+- Interface admin — aba Configuração: inclui campos de Webhook.
+- Defaults do `config_service.py` incluem a seção `webhook`.
+- READMEs atualizados: seções de Segurança (HMAC), Webhook e motivos de DLQ.
+
+---
+
+## [0.3.0] — 2026-07-15
+
+### Added
+- **Rastreabilidade completa via `correlation_id`**: propagado por `decrypt_payload`, `publish_event`, `log_received` e `log_published`.
+- `build_correlation_id` executado antes de `decrypt_payload` para garantir o ID em todos os logs de descriptografia.
+- Prefixo `[{correlation_id}] [TAG]` em todos os logs do fluxo MQTT.
+- `_is_duplicate` e `_mark_processed` passam a logar com `correlation_id`.
+
+### Changed
+- `log_received` e `log_published` aceitam `correlation_id` como parâmetro.
+- `publish_event` aceita `correlation_id` para logs de retry/erro.
+- `publish_dlq` e `publish_ack` propagam `correlation_id` para `publish_event`.
+
+---
+
 ## [0.2.9] — 2026-07-14
 
 ### Added

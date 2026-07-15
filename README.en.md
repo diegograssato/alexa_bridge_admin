@@ -211,7 +211,7 @@ The bridge publishes a standardized JSON payload to `homeassistant/voice/command
 - Error MQTT Output: `mqtt.dlq_topic`
 - Device mapping: `devices` section in YAML
 - Runtime config reload: `pyscript.alexa_bridge_reload` service
-- Current wrapper version: `3.2.0`
+- Current wrapper version: `3.3.0`
 
 ---
 
@@ -267,10 +267,6 @@ mqtt:
 security:
   enabled: true
   secret: my_secret_key
-  encrypted_fields:
-    - VALUE
-    - TYPE
-    - DEVICE
 
 commands:
   off_keywords:
@@ -302,13 +298,12 @@ devices:
 | `commands.off_keywords` | `[turn off, off, disable]` |
 | `security.enabled` | `false` |
 | `security.secret` | `""` |
-| `security.encrypted_fields` | `[VALUE, TYPE, DEVICE]` |
 
 ---
 
-## Security — Field Encryption
+## Security — HMAC Signature
 
-The `security` section enables symmetric encryption on MQTT payload fields before publishing (and decryption on receipt), protecting sensitive data in transit.
+The `security` section enables HMAC-SHA256 signature verification to authenticate payload origin and prevent command spoofing.
 
 ### How it works
 
@@ -318,36 +313,33 @@ sequenceDiagram
     participant MQ as MQTT Broker
     participant PY as PyScript Bridge
 
-    SK->>SK: Encrypt VALUE, TYPE, DEVICE\nwith shared secret
-    SK->>MQ: PUBLISH alexa/command\n{"VALUE":"<enc>","TYPE":"<enc>","DEVICE":"<enc>",...}
+    SK->>SK: compute_hmac(content)\nHMAC-SHA256(secret, json.dumps(content, sort_keys=True))
+    SK->>MQ: PUBLISH {"signature":"abc123","content":{...}}
     MQ->>PY: MSG received
-    PY->>PY: Detects security.enabled=true\nDecrypts configured fields
-    PY->>PY: Processes normally
-    PY->>MQ: PUBLISH homeassistant/voice/command\n{plaintext fields}
+    PY->>PY: verify_hmac(payload)\ncompare_digest(expected, received)
+    alt Valid signature
+      PY->>PY: Processes normally
+    else Invalid signature
+      PY->>MQ: PUBLISH dlq_topic reason=invalid_signature
+      PY->>PY: discard payload
+    end
 ```
 
 ### Configuration
 
 | Field | Type | Description |
 |---|---|---|
-| `security.enabled` | `bool` | Enables/disables decryption (`false` by default) |
+| `security.enabled` | `bool` | Enables/disables HMAC verification (`false` by default) |
 | `security.secret` | `string` | Shared key between Skill and Bridge. **Required when `enabled: true`** |
-| `security.encrypted_fields` | `list[string]` | Payload fields that arrive encrypted |
+| `security.encrypt_payload` | `bool` | When `true`, the Skill sends encrypted `content` as `ciphertext` and the bridge decrypts it before processing |
 
-**Accepted values for `encrypted_fields`:**
-
-`VALUE` · `TYPE` · `DEVICE` · `AGENT` · `ORIGIN` · `INTENT`
-
-### Example with encryption enabled
+### Example with HMAC enabled
 
 ```yaml
 security:
   enabled: true
   secret: my_super_secret_key
-  encrypted_fields:
-    - VALUE
-    - TYPE
-    - DEVICE
+  encrypt_payload: true
 ```
 
 > ⚠️ **Important:** The `secret` must be identical in the Lambda Skill and in `alexa_bridge.yaml`.  
@@ -358,7 +350,23 @@ security:
 The `security` field is automatically validated when saving via UI or Raw YAML:
 - `security.enabled` must be boolean
 - `security.secret` is required (non-empty) when `enabled: true`
-- `security.encrypted_fields` only accepts the fields listed above
+- `security.encrypt_payload` must be boolean
+
+### End-to-end payload encryption (Fernet)
+
+With `security.encrypt_payload: true`, the payload does not travel as plaintext over MQTT/webhook.
+
+```json
+{
+  "enc": "fernet-v1",
+  "ciphertext": "gAAAAAB...",
+  "signature": "f7a1..."
+}
+```
+
+- HMAC signature remains required for origin authentication and integrity.
+- The bridge can decrypt only with the same `security.secret` used by the Skill.
+- On decrypt failure, the event is rejected with `decrypt_failed`.
 
 ---
 
@@ -404,7 +412,7 @@ Also accepts envelope with `content`:
   "correlation_id": "req-123",
   "received_topic": "alexa/command",
   "time": "2026-07-13 21:00:00",
-  "wrapper_version": "3.2.0"
+  "wrapper_version": "3.3.0"
 }
 ```
 
@@ -419,7 +427,7 @@ Also accepts envelope with `content`:
   "received_topic": "alexa/command",
   "correlation_id": "req-123",
   "time": "2026-07-13 21:00:00",
-  "wrapper_version": "3.2.0"
+  "wrapper_version": "3.3.0"
 }
 ```
 
@@ -432,11 +440,11 @@ Also accepts envelope with `content`:
   "received_topic": "alexa/command",
   "correlation_id": "req-123",
   "time": "2026-07-13 21:00:00",
-  "wrapper_version": "3.2.0"
+  "wrapper_version": "3.3.0"
 }
 ```
 
-**DLQ reasons:** `invalid_payload` · `missing_device` · `missing_command` · `device_not_mapped` · `publish_failed`
+**DLQ reasons:** `invalid_payload` · `invalid_signature` · `invalid_type` · `missing_device` · `missing_command` · `device_not_mapped` · `decrypt_failed` · `publish_failed`
 
 ---
 
@@ -445,10 +453,10 @@ Also accepts envelope with `content`:
 | Tab | Description |
 |---|---|
 | Dashboard | KPIs for rooms/devices, reload button, status |
-| Configuration | MQTT topics and off_keywords |
+| Configuration | MQTT topics, off_keywords, HMAC signature and Webhook |
 | Entities | CRUD with aliases, autocomplete, pagination and filters |
 | Raw YAML | Editor with schema validation |
-| Backup / Restore | Create, download, restore and remove backups |
+| Backup / Restore | Create, download, restore and remove backups (auto retention) |
 | Diagnostics | Script and YAML setup status |
 | Audit | Operations log |
 
@@ -509,6 +517,8 @@ sudo systemctl restart mosquitto
 | Processing failure | Inspect `dlq_topic` and `ack_topic` |
 | Reload failure via UI | Check the Audit tab |
 | Device not mapped | Review `devices` in YAML and aliases |
+| Backup creation blocked | Daily limit reached (10/day) |
+| Old backups/logs cleanup | Automatic retention of 30 days |
 
 ---
 

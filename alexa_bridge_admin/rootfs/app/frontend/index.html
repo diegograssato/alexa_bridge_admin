@@ -462,6 +462,37 @@
             gap: 5px;
         }
 
+        .action-right .tiny-actions {
+            justify-content: flex-end;
+        }
+
+        .webhook-ids-table,
+        .entity-aliases-table {
+            table-layout: fixed;
+        }
+
+        .webhook-ids-table th:nth-child(1),
+        .webhook-ids-table td:nth-child(1),
+        .entity-aliases-table th:nth-child(1),
+        .entity-aliases-table td:nth-child(1) {
+            width: 8%;
+        }
+
+        .webhook-ids-table th:nth-child(2),
+        .webhook-ids-table td:nth-child(2),
+        .entity-aliases-table th:nth-child(2),
+        .entity-aliases-table td:nth-child(2) {
+            width: 72%;
+        }
+
+        .webhook-ids-table th:nth-child(3),
+        .webhook-ids-table td:nth-child(3),
+        .entity-aliases-table th:nth-child(3),
+        .entity-aliases-table td:nth-child(3) {
+            width: 20%;
+            text-align: right;
+        }
+
         .tiny {
             padding: 5px 10px;
             font-size: 12px;
@@ -656,56 +687,70 @@
             <!-- Seção Segurança -->
             <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">
                 <div style="font-size:15px;font-weight:700;color:var(--bright);margin-bottom:12px">&#128274; Segurança
-                    (Criptografia de Campos)</div>
+                    (Assinatura HMAC)</div>
                 <div class="row-2" style="align-items:center;margin-bottom:10px">
                     <label class="checkbox-row"
                         style="display:flex;align-items:center;gap:8px;color:var(--text);cursor:pointer;font-size:13px;text-transform:none;letter-spacing:0">
                         <input type="checkbox" id="sec-enabled"
                             style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer" />
-                        Ativar criptografia de campos
+                        Ativar assinatura HMAC-SHA256
                     </label>
                     <div class="field">
-                        <label>Secret (chave de criptografia)</label>
+                        <label>Secret (chave de assinatura HMAC)</label>
                         <input type="password" id="sec-secret" placeholder="chave secreta"
                             autocomplete="new-password" />
                     </div>
                 </div>
+                <label class="checkbox-row"
+                    style="display:flex;align-items:center;gap:8px;color:var(--text);cursor:pointer;font-size:13px;text-transform:none;letter-spacing:0">
+                    <input type="checkbox" id="sec-encrypt-payload"
+                        style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer" />
+                    Cifrar payload ponta a ponta (Fernet)
+                </label>
+                <div style="margin-top:6px;font-size:11px;color:var(--muted)">Quando ativo, todos os payloads carregam
+                    assinatura HMAC-SHA256 (campo <code>signature</code> no MQTT e header <code>X-Signature</code> no
+                    Webhook), impedindo forjamento mesmo em tópicos públicos.</div>
+                <div style="margin-top:4px;font-size:11px;color:var(--muted)">Com cifragem ativa, o conteúdo sai da
+                    Skill
+                    como <code>ciphertext</code> e só é aberto no <code>alexa_bridge</code> com o mesmo secret.</div>
+            </div>
+
+            <!-- Seção Webhook -->
+            <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">
+                <div style="font-size:15px;font-weight:700;color:var(--bright);margin-bottom:8px">&#127760; Webhook HTTP
+                </div>
+                <div style="margin-bottom:12px;font-size:12px;color:var(--muted);line-height:1.5">
+                    Recebe comandos via HTTP POST diretamente no HA.<br>
+                    Cadastre at&eacute; <strong>20 Webhook IDs</strong> gerados pelo HA
+                    (<em>Configura&ccedil;&otilde;es &rarr; Automa&ccedil;&otilde;es &rarr; Novo trigger Webhook</em>).
+                    Deixe em branco para desativar.
+                </div>
                 <div class="field">
-                    <label>Campos criptografados</label>
-                    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px">
-                        <label
-                            style="display:flex;align-items:center;gap:6px;color:var(--text);font-size:13px;text-transform:none;letter-spacing:0;cursor:pointer">
-                            <input type="checkbox" class="sec-field-check" value="VALUE"
-                                style="accent-color:var(--accent)" /> VALUE
-                        </label>
-                        <label
-                            style="display:flex;align-items:center;gap:6px;color:var(--text);font-size:13px;text-transform:none;letter-spacing:0;cursor:pointer">
-                            <input type="checkbox" class="sec-field-check" value="TYPE"
-                                style="accent-color:var(--accent)" /> TYPE
-                        </label>
-                        <label
-                            style="display:flex;align-items:center;gap:6px;color:var(--text);font-size:13px;text-transform:none;letter-spacing:0;cursor:pointer">
-                            <input type="checkbox" class="sec-field-check" value="DEVICE"
-                                style="accent-color:var(--accent)" /> DEVICE
-                        </label>
-                        <label
-                            style="display:flex;align-items:center;gap:6px;color:var(--text);font-size:13px;text-transform:none;letter-spacing:0;cursor:pointer">
-                            <input type="checkbox" class="sec-field-check" value="AGENT"
-                                style="accent-color:var(--accent)" /> AGENT
-                        </label>
-                        <label
-                            style="display:flex;align-items:center;gap:6px;color:var(--text);font-size:13px;text-transform:none;letter-spacing:0;cursor:pointer">
-                            <input type="checkbox" class="sec-field-check" value="ORIGIN"
-                                style="accent-color:var(--accent)" /> ORIGIN
-                        </label>
-                        <label
-                            style="display:flex;align-items:center;gap:6px;color:var(--text);font-size:13px;text-transform:none;letter-spacing:0;cursor:pointer">
-                            <input type="checkbox" class="sec-field-check" value="INTENT"
-                                style="accent-color:var(--accent)" /> INTENT
-                        </label>
+                    <label>Webhook IDs</label>
+                    <div class="actions" style="margin-top:0">
+                        <input id="webhook-id-input" placeholder="Digite um webhook ID e clique adicionar" />
+                        <button class="btn" id="btn-add-webhook-id" type="button">Adicionar Webhook ID</button>
                     </div>
-                    <div style="margin-top:6px;font-size:11px;color:var(--muted)">Campos marcados terão seu conteúdo
-                        criptografado/descriptografado pelo bridge usando o secret acima.</div>
+                    <div class="table-section" style="margin-top:8px">
+                        <div class="table-overflow">
+                            <table class="webhook-ids-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width:70px">#</th>
+                                        <th>Webhook ID</th>
+                                        <th style="width:150px">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="webhook-ids-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div id="webhook-ids-meta" style="margin-top:6px;font-size:11px;color:var(--muted)">0 de 20 IDs
+                        cadastrados</div>
+                </div>
+                <div style="font-size:11px;color:var(--muted);margin-top:6px">
+                    ⚠ Alterar os Webhook IDs exige recarregar o <strong>PyScript completo</strong> no HA
+                    (não apenas o botão <em>Executar Reload PyScript</em>).
                 </div>
             </div>
 
@@ -870,7 +915,22 @@
                     <input id="entity-alias-input" placeholder="Digite um alias e clique adicionar" />
                     <button class="btn" id="btn-add-alias" type="button">Adicionar Alias</button>
                 </div>
-                <div id="entity-alias-list" class="alias-list"></div>
+                <div class="table-section" style="margin-top:8px">
+                    <div class="table-overflow">
+                        <table class="entity-aliases-table">
+                            <thead>
+                                <tr>
+                                    <th style="width:70px">#</th>
+                                    <th>Alias</th>
+                                    <th style="width:150px">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="entity-aliases-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="entity-aliases-meta" style="margin-top:6px;font-size:11px;color:var(--muted)">0 de 5 aliases
+                    cadastrados</div>
             </div>
             <div class="actions" style="justify-content:flex-end">
                 <button class="btn" id="btn-cancel-entity" type="button">Cancelar</button>
@@ -902,8 +962,11 @@
             lastAgent: "-",
             editKey: null,
             aliases: [],
+            webhookIds: [],
             confirmAction: null,
         };
+
+        const MAX_ENTITY_ALIASES = 5;
 
         const $ = (id) => document.getElementById(id);
 
@@ -953,30 +1016,96 @@
             $("off-keywords").value = (cfg?.commands?.off_keywords || []).join(", ");
             // Security
             const sec = cfg?.security || {};
-            $("sec-enabled").checked = !!sec.enabled;
+            $('sec-enabled').checked = !!sec.enabled;
             $("sec-secret").value = sec.secret || "";
-            const encFields = Array.isArray(sec.encrypted_fields) ? sec.encrypted_fields : [];
-            document.querySelectorAll(".sec-field-check").forEach(cb => {
-                cb.checked = encFields.includes(cb.value);
-            });
+            $("sec-encrypt-payload").checked = !!sec.encrypt_payload;
+            // Webhook
+            const wh = cfg?.webhook || {};
+            state.webhookIds = Array.isArray(wh.ids)
+                ? wh.ids
+                : ((wh.id || "").trim() ? [wh.id.trim()] : []);
+            renderWebhookIds();
             const raw = await api("config/yaml");
             $("raw-yaml").value = raw.yaml || "";
             refreshKpis();
         }
 
-        function renderAliases() {
-            const box = $("entity-alias-list");
-            box.innerHTML = "";
-            if (!state.aliases.length) {
-                box.innerHTML = '<span style="color:var(--muted);font-size:12px">Nenhum alias adicionado</span>';
-                return;
+        function renderWebhookIds() {
+            const body = $("webhook-ids-body");
+            const meta = $("webhook-ids-meta");
+            body.innerHTML = "";
+
+            if (!state.webhookIds.length) {
+                body.innerHTML = '<tr><td colspan="3" style="color:var(--muted)">Nenhum webhook ID adicionado</td></tr>';
+            } else {
+                state.webhookIds.forEach((webhookId, index) => {
+                    const tr = document.createElement("tr");
+
+                    const tdIndex = document.createElement("td");
+                    tdIndex.textContent = String(index + 1);
+
+                    const tdWebhookId = document.createElement("td");
+                    tdWebhookId.className = "cell-wrap";
+                    tdWebhookId.textContent = webhookId;
+
+                    const tdActions = document.createElement("td");
+                    tdActions.className = "action-right";
+                    const actions = document.createElement("div");
+                    actions.className = "tiny-actions";
+                    const removeButton = document.createElement("button");
+                    removeButton.className = "btn tiny danger";
+                    removeButton.type = "button";
+                    removeButton.textContent = "Remover";
+                    removeButton.setAttribute("data-webhook-id", encodeURIComponent(webhookId));
+                    actions.appendChild(removeButton);
+                    tdActions.appendChild(actions);
+
+                    tr.appendChild(tdIndex);
+                    tr.appendChild(tdWebhookId);
+                    tr.appendChild(tdActions);
+                    body.appendChild(tr);
+                });
             }
-            state.aliases.forEach((alias) => {
-                const item = document.createElement("span");
-                item.className = "alias-pill";
-                item.innerHTML = `<span class="alias-text">${alias}</span><button type="button" data-alias="${encodeURIComponent(alias)}">x</button>`;
-                box.appendChild(item);
-            });
+
+            meta.textContent = `${state.webhookIds.length} de 20 IDs cadastrados`;
+        }
+
+        function renderAliases() {
+            const body = $("entity-aliases-body");
+            const meta = $("entity-aliases-meta");
+            body.innerHTML = "";
+            if (!state.aliases.length) {
+                body.innerHTML = '<tr><td colspan="3" style="color:var(--muted)">Nenhum alias adicionado</td></tr>';
+            } else {
+                state.aliases.forEach((alias, index) => {
+                    const tr = document.createElement("tr");
+
+                    const tdIndex = document.createElement("td");
+                    tdIndex.textContent = String(index + 1);
+
+                    const tdAlias = document.createElement("td");
+                    tdAlias.className = "cell-wrap";
+                    tdAlias.textContent = alias;
+
+                    const tdActions = document.createElement("td");
+                    tdActions.className = "action-right";
+                    const actions = document.createElement("div");
+                    actions.className = "tiny-actions";
+                    const removeButton = document.createElement("button");
+                    removeButton.className = "btn tiny danger";
+                    removeButton.type = "button";
+                    removeButton.textContent = "Remover";
+                    removeButton.setAttribute("data-alias", encodeURIComponent(alias));
+                    actions.appendChild(removeButton);
+                    tdActions.appendChild(actions);
+
+                    tr.appendChild(tdIndex);
+                    tr.appendChild(tdAlias);
+                    tr.appendChild(tdActions);
+                    body.appendChild(tr);
+                });
+            }
+            meta.textContent = `${state.aliases.length} de ${MAX_ENTITY_ALIASES} aliases cadastrados`;
         }
 
         async function loadEntities() {
@@ -1029,15 +1158,27 @@
             $("entity-alias-input").value = "";
         }
 
-        function openConfirm(message, onConfirm) {
+        function openConfirm(message, onConfirm, options = {}) {
             $("confirm-message").textContent = message;
             state.confirmAction = onConfirm;
+            const cancelBtn = $("btn-confirm-cancel");
+            const okBtn = $("btn-confirm-ok");
+            cancelBtn.style.display = options.hideCancel ? "none" : "";
+            cancelBtn.textContent = options.cancelText || "Cancelar";
+            okBtn.textContent = options.confirmText || "Confirmar";
             $("confirm-modal").classList.remove("hidden");
+        }
+
+        function openInfo(message) {
+            openConfirm(message, async () => { }, { hideCancel: true, confirmText: "OK" });
         }
 
         function closeConfirm() {
             $("confirm-modal").classList.add("hidden");
             state.confirmAction = null;
+            $("btn-confirm-cancel").style.display = "";
+            $("btn-confirm-cancel").textContent = "Cancelar";
+            $("btn-confirm-ok").textContent = "Confirmar";
         }
 
         async function fetchMediaPlayerSuggestions(query) {
@@ -1166,8 +1307,9 @@
 
         $("btn-save-config").addEventListener("click", async () => {
             try {
-                const encFields = [...document.querySelectorAll(".sec-field-check")]
-                    .filter(cb => cb.checked).map(cb => cb.value);
+                if (state.webhookIds.length > 20) {
+                    throw new Error("Webhook IDs: máximo de 20 itens");
+                }
                 const payload = {
                     mqtt: {
                         input_topic: $("input-topic").value.trim(),
@@ -1178,7 +1320,10 @@
                     security: {
                         enabled: $("sec-enabled").checked,
                         secret: $("sec-secret").value,
-                        encrypted_fields: encFields,
+                        encrypt_payload: $("sec-encrypt-payload").checked,
+                    },
+                    webhook: {
+                        ids: state.webhookIds,
                     },
                     commands: {
                         off_keywords: $("off-keywords").value.split(",").map((v) => v.trim()).filter(Boolean),
@@ -1197,6 +1342,50 @@
         $("btn-refresh-config").addEventListener("click", async () => {
             try { await loadConfig(); setStatus("status-config", "Configuracao atualizada", true); }
             catch (err) { setStatus("status-config", err.message, false); }
+        });
+
+        $("btn-add-webhook-id").addEventListener("click", () => {
+            const value = $("webhook-id-input").value.trim();
+            if (!value) return;
+            if (value.includes("/")) {
+                setStatus("status-config", "Webhook ID não pode conter '/'", false);
+                return;
+            }
+            if (state.webhookIds.includes(value)) {
+                const msg = "Webhook ID já adicionado";
+                setStatus("status-config", msg, false);
+                openInfo(msg);
+                return;
+            }
+            if (state.webhookIds.length >= 20) {
+                const msg = "Você atingiu o limite máximo de 20 webhook";
+                setStatus("status-config", msg, false);
+                openInfo(msg);
+                return;
+            }
+            state.webhookIds.push(value);
+            $("webhook-id-input").value = "";
+            renderWebhookIds();
+            setStatus("status-config", "Webhook ID adicionado", true);
+        });
+
+        $("webhook-id-input").addEventListener("keydown", (ev) => {
+            if (ev.key !== "Enter") return;
+            ev.preventDefault();
+            $("btn-add-webhook-id").click();
+        });
+
+        $("webhook-ids-body").addEventListener("click", (ev) => {
+            const target = ev.target;
+            if (!(target instanceof HTMLElement)) return;
+            const encoded = target.getAttribute("data-webhook-id");
+            if (!encoded) return;
+            const webhookId = decodeURIComponent(encoded);
+            openConfirm(`Remover Webhook ID ${webhookId}?`, async () => {
+                state.webhookIds = state.webhookIds.filter((w) => w !== webhookId);
+                renderWebhookIds();
+                setStatus("status-config", "Webhook ID removido", true);
+            });
         });
 
         $("btn-save-yaml").addEventListener("click", async () => {
@@ -1277,19 +1466,41 @@
         $("btn-add-alias").addEventListener("click", () => {
             const value = $("entity-alias-input").value.trim();
             if (!value) return;
-            if (!state.aliases.includes(value)) state.aliases.push(value);
+            if (state.aliases.includes(value)) {
+                const msg = "Alias já adicionado";
+                setStatus("status-entities", msg, false);
+                openInfo(msg);
+                return;
+            }
+            if (state.aliases.length >= MAX_ENTITY_ALIASES) {
+                const msg = "Você atingiu o limite máximo de 5 aliases";
+                setStatus("status-entities", msg, false);
+                openInfo(msg);
+                return;
+            }
+            state.aliases.push(value);
             $("entity-alias-input").value = "";
             renderAliases();
+            setStatus("status-entities", "Alias adicionado", true);
         });
 
-        $("entity-alias-list").addEventListener("click", (ev) => {
+        $("entity-alias-input").addEventListener("keydown", (ev) => {
+            if (ev.key !== "Enter") return;
+            ev.preventDefault();
+            $("btn-add-alias").click();
+        });
+
+        $("entity-aliases-body").addEventListener("click", (ev) => {
             const btn = ev.target;
             if (!(btn instanceof HTMLElement)) return;
             const encoded = btn.getAttribute("data-alias");
             if (!encoded) return;
             const alias = decodeURIComponent(encoded);
-            state.aliases = state.aliases.filter((a) => a !== alias);
-            renderAliases();
+            openConfirm(`Remover alias ${alias}?`, async () => {
+                state.aliases = state.aliases.filter((a) => a !== alias);
+                renderAliases();
+                setStatus("status-entities", "Alias removido", true);
+            });
         });
 
         let autocompleteTimer = null;
@@ -1374,7 +1585,9 @@
                 await loadAudit();
                 setStatus("status-backup", "Backup criado", true);
             } catch (err) {
-                setStatus("status-backup", err.message, false);
+                const msg = err?.message || "Falha ao criar backup";
+                setStatus("status-backup", msg, false);
+                openInfo(msg);
             }
         });
 
