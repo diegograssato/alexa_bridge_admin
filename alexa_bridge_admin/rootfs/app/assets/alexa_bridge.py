@@ -261,7 +261,7 @@ def parse_payload(payload):
             data = content
     return data
 
-def decrypt_payload(data):
+def decrypt_payload(data, correlation_id=""):
 
     security = CONFIG.get(
         "security",
@@ -298,16 +298,15 @@ def decrypt_payload(data):
             )
 
             log.info(
-                f"[AlexaWrapper] Campo "
-                f"'{field}' descriptografado"
+                f"[{correlation_id}] [AlexaBridge] [DECRYPT] "
+                f"Campo '{field}' descriptografado"
             )
 
         except Exception as ex:
 
             log.error(
-                f"[AlexaWrapper] Erro ao "
-                f"descriptografar "
-                f"'{field}': {ex}"
+                f"[{correlation_id}] [AlexaBridge] [DECRYPT] "
+                f"Erro ao descriptografar '{field}': {ex}"
             )
 
     return data
@@ -383,7 +382,7 @@ def is_allowed_topic(topic):
     return False
 
 
-def publish_event(topic, payload):
+def publish_event(topic, payload, correlation_id=""):
     """Publica evento normalizado com retry e backoff exponencial."""
     delay = _PUBLISH_INITIAL_DELAY
     last_ex = None
@@ -397,19 +396,19 @@ def publish_event(topic, payload):
             )
             if attempt > 1:
                 log.info(
-                    f"[AlexaBridge] Publicação bem-sucedida na tentativa {attempt}"
+                    f"[{correlation_id}] [AlexaBridge] Publicação bem-sucedida na tentativa {attempt}"
                 )
             return True
         except Exception as ex:
             last_ex = ex
             log.warning(
-                f"[AlexaBridge] Tentativa {attempt}/{_PUBLISH_MAX_RETRIES} falhou: {ex}"
+                f"[{correlation_id}] [AlexaBridge] Tentativa {attempt}/{_PUBLISH_MAX_RETRIES} falhou: {ex}"
             )
             if attempt < _PUBLISH_MAX_RETRIES:
                 time.sleep(delay)
                 delay *= 2
     log.error(
-        f"[AlexaBridge] Todas as {_PUBLISH_MAX_RETRIES} tentativas falharam: {last_ex}"
+        f"[{correlation_id}] [AlexaBridge] Todas as {_PUBLISH_MAX_RETRIES} tentativas falharam: {last_ex}"
     )
     return False
 
@@ -489,7 +488,7 @@ def publish_dlq(topic, raw_payload, reason, correlation_id=""):
         ),
         "bridge_version": VERSION
     }
-    return publish_event(DLQ_TOPIC, payload)
+    return publish_event(DLQ_TOPIC, payload, correlation_id)
 
 
 def publish_ack(topic, correlation_id, status, detail=""):
@@ -504,31 +503,26 @@ def publish_ack(topic, correlation_id, status, detail=""):
         ),
         "bridge_version": VERSION
     }
-    return publish_event(ACK_TOPIC, payload)
+    return publish_event(ACK_TOPIC, payload, correlation_id)
 
 
-def log_received(device, entity, room, command, agent="", msg_type=""):
+def log_received(device, entity, room, command, agent="", msg_type="", correlation_id=""):
     """Registra no log os dados principais do comando recebido."""
     log.info(
-        f"[AlexaBridge] "
-        f"TYPE='{msg_type}' "
-        f"VALUE='{command}' "
-        f"ROOM='{room}' "
-        f"ENTITY='{entity}' "
-        f"DEVICE='{device}' "
-        f"AGENT='{agent}'"
+        f"[{correlation_id}] [AlexaBridge] [RECEIVED] "
+        f"TYPE='{msg_type}' VALUE='{command}' ROOM='{room}' "
+        f"ENTITY='{entity}' DEVICE='{device}' AGENT='{agent}'"
     )
 
 
-def log_published(topic, payload):
+def log_published(topic, payload, correlation_id=""):
     """Registra no log o tópico e payload publicados."""
     log.info(
-        f"[AlexaBridge] "
-        f"Publicado em '{topic}'"
+        f"[{correlation_id}] [AlexaBridge] [PUBLISHED] "
+        f"Tópico: '{topic}'"
     )
-
     log.info(
-        f"[AlexaBridge] "
+        f"[{correlation_id}] [AlexaBridge] [PUBLISHED] "
         f"Payload: {json.dumps(payload, ensure_ascii=False)}"
     )
 
@@ -608,8 +602,9 @@ def alexa_bridge(
         publish_dlq(topic, payload, "invalid_payload")
         return
 
-    data = decrypt_payload(data)    
     correlation_id = build_correlation_id(data)
+    log.info(f"[{correlation_id}] [AlexaBridge] Payload recebido no tópico '{topic}'")
+    data = decrypt_payload(data, correlation_id)
 
     # --- Idempotência: descarta reprocessamento dentro do TTL ---
     if _is_duplicate(correlation_id):
@@ -629,7 +624,7 @@ def alexa_bridge(
         normalized_type = safe_str(raw_type).upper()
         if normalized_type not in VALID_TYPES:
             log.warning(
-                f"[AlexaBridge] TYPE inválido: '{raw_type}'. "
+                f"[{correlation_id}] [AlexaBridge] TYPE inválido: '{raw_type}'. "
                 f"Aceitos: {sorted(VALID_TYPES)}"
             )
             publish_dlq(topic, payload, "invalid_type", correlation_id)
@@ -638,14 +633,14 @@ def alexa_bridge(
         msg_type = normalized_type
     if not device:
         log.warning(
-            "[AlexaBridge] DEVICE não informado"
+            f"[{correlation_id}] [AlexaBridge] DEVICE não informado"
         )
         publish_dlq(topic, payload, "missing_device", correlation_id)
         publish_ack(topic, correlation_id, "error", "missing_device")
         return
     if not command:
         log.warning(
-            "[AlexaBridge] VALUE não informado"
+            f"[{correlation_id}] [AlexaBridge] VALUE não informado"
         )
         publish_dlq(topic, payload, "missing_command", correlation_id)
         publish_ack(topic, correlation_id, "error", "missing_command")
@@ -653,8 +648,8 @@ def alexa_bridge(
     info = get_device_info(device)
     if not info:
         log.warning(
-            f"[AlexaBridge] "
-            f"Dispositivo não mapeado: {device}"
+            f"[{correlation_id}] [AlexaBridge] "
+            f"Dispositivo não mapeado: '{device}'"
         )
         publish_dlq(topic, payload, "device_not_mapped", correlation_id)
         publish_ack(topic, correlation_id, "error", "device_not_mapped")
@@ -682,10 +677,11 @@ def alexa_bridge(
         "time":             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "bridge_version":   VERSION
     }
-    log_received(device, entity, room, command, agent=agent, msg_type=msg_type)
+    log_received(device, entity, room, command, agent=agent, msg_type=msg_type, correlation_id=correlation_id)
     published = publish_event(
         OUTPUT_TOPIC,
-        result
+        result,
+        correlation_id
     )
     if published:
         _mark_processed(correlation_id)
@@ -697,5 +693,6 @@ def alexa_bridge(
         return
     log_published(
         OUTPUT_TOPIC,
-        result
+        result,
+        correlation_id
     )
