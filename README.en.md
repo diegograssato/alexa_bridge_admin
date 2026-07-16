@@ -4,6 +4,20 @@ PyScript bridge to integrate Alexa Skill and Home Assistant via MQTT.
 
 The flow receives messages from the skill on an input topic, resolves the device by alias from the YAML configuration, and publishes a normalized event for Home Assistant automations.
 
+## What's New in 0.8.0 / Wrapper 3.4.0
+
+- MQTT and Webhook inputs can be enabled independently with checkboxes (`transport.mqtt_enabled`, `transport.webhook_enabled`).
+- Source-based integration (`integration.mqtt` and `integration.webhook`) with `mqtt` or `event_bus` mode.
+- Event Bus simplified to `event_name` and enriched with source metadata (`provided_by`, `transport_source`).
+- Webhook security supports signature via `X-Signature` header.
+- Stronger schema validation in Raw YAML and API save path for the new transport/integration fields.
+- Legacy `transport.mode` field removed.
+- Automatic `pyscript.reload` execution when webhook settings change via UI/API save.
+
+References:
+- Full changelog: `CHANGELOG.md`
+- Configuration combinations matrix: `DOCKS.md`
+
 ---
 
 ## Table of Contents
@@ -27,6 +41,8 @@ The flow receives messages from the skill on an input topic, resolves the device
 - [Local Development](#local-development)
 - [Tests](#tests)
 - [Roadmap](#roadmap)
+- [Changelog](CHANGELOG.md)
+- [DOCKS - Configuration Matrix](DOCKS.md)
 
 ---
 
@@ -211,7 +227,7 @@ The bridge publishes a standardized JSON payload to `homeassistant/voice/command
 - Error MQTT Output: `mqtt.dlq_topic`
 - Device mapping: `devices` section in YAML
 - Runtime config reload: `pyscript.alexa_bridge_reload` service
-- Current wrapper version: `3.3.0`
+- Current wrapper version: `3.4.0`
 
 ---
 
@@ -412,7 +428,7 @@ Also accepts envelope with `content`:
   "correlation_id": "req-123",
   "received_topic": "alexa/command",
   "time": "2026-07-13 21:00:00",
-  "wrapper_version": "3.3.0"
+  "wrapper_version": "3.4.0"
 }
 ```
 
@@ -427,7 +443,7 @@ Also accepts envelope with `content`:
   "received_topic": "alexa/command",
   "correlation_id": "req-123",
   "time": "2026-07-13 21:00:00",
-  "wrapper_version": "3.3.0"
+  "wrapper_version": "3.4.0"
 }
 ```
 
@@ -440,7 +456,7 @@ Also accepts envelope with `content`:
   "received_topic": "alexa/command",
   "correlation_id": "req-123",
   "time": "2026-07-13 21:00:00",
-  "wrapper_version": "3.3.0"
+  "wrapper_version": "3.4.0"
 }
 ```
 

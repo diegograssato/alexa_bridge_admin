@@ -42,10 +42,12 @@ def _make_ha_stubs(tmp_yaml_path: Path):
     sys.modules.setdefault("homeassistant.util", ha_util)
     sys.modules.setdefault("homeassistant.util.yaml", ha_yaml)
 
-    # Globais injetados pelo pyscript: log, mqtt, @service, @mqtt_trigger
+    # Globais injetados pelo pyscript: log, mqtt, event, decorators
     _log = MagicMock()
     _mqtt = MagicMock()
     _mqtt.publish = MagicMock()
+    _event = MagicMock()
+    _event.fire = MagicMock()
 
     def _service(fn):
         return fn
@@ -55,12 +57,17 @@ def _make_ha_stubs(tmp_yaml_path: Path):
             return fn
         return decorator
 
-    return _log, _mqtt, _service, _mqtt_trigger
+    def _webhook_trigger(*args, **kwargs):
+        def decorator(fn):
+            return fn
+        return decorator
+
+    return _log, _mqtt, _event, _service, _mqtt_trigger, _webhook_trigger
 
 
 def _import_bridge(tmp_yaml_path: Path):
     """Importa alexa_bridge com stubs, retornando o módulo e os mocks."""
-    _log, _mqtt, _service, _mqtt_trigger = _make_ha_stubs(tmp_yaml_path)
+    _log, _mqtt, _event, _service, _mqtt_trigger, _webhook_trigger = _make_ha_stubs(tmp_yaml_path)
 
     bridge_path = (
         Path(__file__).resolve().parents[2]
@@ -82,8 +89,10 @@ def _import_bridge(tmp_yaml_path: Path):
     # Injeta globais do pyscript no namespace do módulo antes de exec
     mod.log = _log
     mod.mqtt = _mqtt
+    mod.event = _event
     mod.service = _service
     mod.mqtt_trigger = _mqtt_trigger
+    mod.webhook_trigger = _webhook_trigger
 
     # Patch builtins que o pyscript provê como built-ins globais
     with (

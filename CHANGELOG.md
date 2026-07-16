@@ -7,6 +7,47 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.8.0] — 2026-07-16
+
+### Added
+- Modo de integração por origem (`integration.mqtt` e `integration.webhook`) com suporte a `mqtt` e `event_bus`.
+- Publicação no Event Bus com metadados de origem (`provided_by` e `transport_source`).
+- Auto reload de runtime do PyScript (`pyscript.reload`) ao salvar alterações de webhook via API (`/api/config` e `/api/config/yaml`).
+- Feedback detalhado no frontend para auto reload no salvar Configuração e no salvar YAML.
+- Documento de combinações de configuração (`DOCKS.md`) cobrindo cenários suportados.
+
+### Changed
+- Bridge PyScript simplificada para usar apenas `webhook.id` no registro do listener (`@webhook_trigger`).
+- Dashboard/Home: KPI "Modo Operante" passa a refletir o tipo de integração salvo por origem.
+- Versão do wrapper do bridge atualizada para `3.4.0`.
+
+### Fixed
+- Correção do fluxo de URL da skill HTTP no projeto Jarvis para montar corretamente o endpoint com `webhook_id`/`webhook_key`.
+- Correções de UX no frontend para tabs e visibilidade das integrações por transporte ativo.
+
+### Removed
+- Campo legado `transport.mode` removido do backend, frontend, schema e template YAML.
+- Suporte legado a `webhook.ids` removido do runtime do bridge (listener único por `webhook.id`).
+
+### Validation
+- Regras de schema reforçadas para `transport` e `integration` no save da API e na validação de Raw YAML.
+
+### Tests
+- Suíte de testes atualizada para refletir remoção de `transport.mode` e validações estritas de integração.
+
+## [0.7.2] — 2026-07-15
+
+### Fixed
+- Correção crítica no webhook do bridge PyScript: removido trecho inválido com variáveis indefinidas no `@webhook_trigger`.
+- Webhook com segurança habilitada passa a validar assinatura com contrato **body-first** (`signature`, `x_signature`, `x-signature`), com `X-Signature` em header mantido como fallback de compatibilidade.
+
+### Changed
+- Política de webhook ajustada para **ID único**: `webhook.ids` passa a aceitar no máximo 1 item no backend e na interface.
+- Runtime do bridge passa a registrar apenas 1 listener de webhook por configuração ativa.
+
+### Tests
+- Testes unitários atualizados para validação de `webhook.ids` com limite de 1 item.
+
 ## [0.7.1] — 2026-07-15
 
 ### Changed

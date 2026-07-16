@@ -247,9 +247,253 @@ def test_normalized_webhook_ids_and_change_detection(tmp_path: Path) -> None:
         }
     }
 
-    assert service.normalized_webhook_ids(before) == ["abc", "xyz"]
+        assert service.normalized_webhook_ids(before) == ["abc"]
     assert service.webhook_ids_changed(before, after_same) is False
     assert service.webhook_ids_changed(before, after_changed) is True
+
+
+def test_validate_raw_yaml_schema_rejects_more_than_one_webhook_id(tmp_path: Path) -> None:
+        cfg_file = tmp_path / "alexa_bridge.yaml"
+        service = ConfigService(str(cfg_file))
+
+        raw = """
+mqtt:
+    input_topic: alexa/in
+    output_topic: alexa/out
+    ack_topic: alexa/ack
+    dlq_topic: alexa/dlq
+commands:
+    off_keywords: [desliga]
+devices: {}
+webhook:
+    ids: ["id-1", "id-2"]
+"""
+
+        result = service.validate_raw_yaml_schema(raw)
+        assert result["ok"] is False
+        assert "webhook.ids suporta no máximo 1 item" in result["errors"]
+
+
+    def test_save_rejects_more_than_one_webhook_id(tmp_path: Path) -> None:
+        cfg_file = tmp_path / "alexa_bridge.yaml"
+        service = ConfigService(str(cfg_file))
+
+        payload = service.defaults()
+        payload["webhook"] = {"ids": ["id-1", "id-2"]}
+
+        try:
+            service.save(payload)
+            assert False, "save should reject more than one webhook id"
+        except ValueError as ex:
+            assert "webhook.ids suporta no máximo 1 item" in str(ex)
+
+
+def test_validate_raw_yaml_schema_rejects_non_string_webhook_id(tmp_path: Path) -> None:
+        cfg_file = tmp_path / "alexa_bridge.yaml"
+        service = ConfigService(str(cfg_file))
+
+        raw = """
+mqtt:
+    input_topic: alexa/in
+    output_topic: alexa/out
+    ack_topic: alexa/ack
+    dlq_topic: alexa/dlq
+webhook:
+    id: 123
+commands:
+    off_keywords: [desliga]
+devices: {}
+"""
+
+        result = service.validate_raw_yaml_schema(raw)
+        assert result["ok"] is False
+        assert "webhook.id deve ser string" in result["errors"]
+
+
+    def test_validate_raw_yaml_schema_requires_transport_and_webhook_blocks(tmp_path: Path) -> None:
+        cfg_file = tmp_path / "alexa_bridge.yaml"
+        service = ConfigService(str(cfg_file))
+
+        raw = """
+    mqtt:
+      input_topic: alexa/in
+      output_topic: alexa/out
+      ack_topic: alexa/ack
+      dlq_topic: alexa/dlq
+    commands:
+      off_keywords: [desliga]
+    devices: {}
+    """
+
+        result = service.validate_raw_yaml_schema(raw)
+        assert result["ok"] is False
+        assert "Campo transport é obrigatório" in result["errors"]
+        assert "Campo webhook é obrigatório" in result["errors"]
+
+
+    def test_validate_raw_yaml_schema_requires_transport_and_webhook_id_key(tmp_path: Path) -> None:
+        cfg_file = tmp_path / "alexa_bridge.yaml"
+        service = ConfigService(str(cfg_file))
+
+        raw = """
+    transport: {}
+    mqtt:
+      input_topic: alexa/in
+      output_topic: alexa/out
+      ack_topic: alexa/ack
+      dlq_topic: alexa/dlq
+    webhook: {}
+    commands:
+      off_keywords: [desliga]
+    devices: {}
+    """
+
+        result = service.validate_raw_yaml_schema(raw)
+        assert result["ok"] is False
+        assert "webhook.id é obrigatório" in result["errors"]
+
+
+    def test_save_requires_transport_and_webhook_blocks(tmp_path: Path) -> None:
+        cfg_file = tmp_path / "alexa_bridge.yaml"
+        service = ConfigService(str(cfg_file))
+
+        payload = service.defaults()
+        payload.pop("transport", None)
+
+        try:
+            service.save(payload)
+            assert False, "save should reject missing transport block"
+        except ValueError as ex:
+            assert "Campo transport deve ser um objeto" in str(ex)
+
+        payload = service.defaults()
+        payload.pop("webhook", None)
+
+        try:
+            service.save(payload)
+            assert False, "save should reject missing webhook block"
+        except ValueError as ex:
+            assert "Campo webhook deve ser um objeto" in str(ex)
+
+
+def test_validate_raw_yaml_schema_requires_security_and_devices_blocks(tmp_path: Path) -> None:
+        cfg_file = tmp_path / "alexa_bridge.yaml"
+        service = ConfigService(str(cfg_file))
+
+        raw = """
+mqtt:
+    input_topic: alexa/in
+    output_topic: alexa/out
+    ack_topic: alexa/ack
+    dlq_topic: alexa/dlq
+webhook:
+    id: ""
+commands:
+    off_keywords: [desliga]
+"""
+
+        result = service.validate_raw_yaml_schema(raw)
+        assert result["ok"] is False
+        assert "Campo security é obrigatório" in result["errors"]
+        assert "Campo devices é obrigatório" in result["errors"]
+
+
+def test_validate_raw_yaml_schema_rejects_missing_new_transport_and_integration_fields(tmp_path: Path) -> None:
+        cfg_file = tmp_path / "alexa_bridge.yaml"
+        service = ConfigService(str(cfg_file))
+
+        raw = """
+transport: {}
+mqtt:
+    input_topic: alexa/command
+    output_topic: homeassistant/voice/command
+    ack_topic: homeassistant/voice/ack
+    dlq_topic: homeassistant/voice/dlq
+integration: {}
+webhook:
+    id: ""
+commands:
+    off_keywords: [desliga]
+devices: {}
+security:
+    enabled: true
+    secret: abc
+    encrypt_payload: false
+"""
+
+        result = service.validate_raw_yaml_schema(raw)
+        assert result["ok"] is False
+        assert "transport.mqtt_enabled é obrigatório" in result["errors"]
+        assert "transport.webhook_enabled é obrigatório" in result["errors"]
+        assert "integration.mqtt é obrigatório" in result["errors"]
+        assert "integration.webhook é obrigatório" in result["errors"]
+
+
+def test_save_requires_security_and_devices_blocks(tmp_path: Path) -> None:
+        cfg_file = tmp_path / "alexa_bridge.yaml"
+        service = ConfigService(str(cfg_file))
+
+        payload = service.defaults()
+        payload.pop("security", None)
+
+        try:
+                service.save(payload)
+                assert False, "save should reject missing security block"
+        except ValueError as ex:
+                assert "Campo security deve ser um objeto" in str(ex)
+
+        payload = service.defaults()
+        payload.pop("devices", None)
+
+        try:
+                service.save(payload)
+                assert False, "save should reject missing devices block"
+        except ValueError as ex:
+                assert "Campo devices deve ser um objeto" in str(ex)
+
+
+def test_save_rejects_missing_integration_source_block(tmp_path: Path) -> None:
+        cfg_file = tmp_path / "alexa_bridge.yaml"
+        service = ConfigService(str(cfg_file))
+
+        payload = service.defaults()
+        payload["integration"].pop("webhook", None)
+
+        try:
+            service.save(payload)
+            assert False, "save should reject missing integration.webhook"
+        except ValueError as ex:
+            assert "integration.webhook é obrigatório" in str(ex)
+
+
+def test_save_rejects_event_bus_without_event_name(tmp_path: Path) -> None:
+        cfg_file = tmp_path / "alexa_bridge.yaml"
+        service = ConfigService(str(cfg_file))
+
+        payload = service.defaults()
+        payload["integration"]["webhook"]["type"] = "event_bus"
+        payload["integration"]["webhook"]["event_bus"] = {}
+
+        try:
+            service.save(payload)
+            assert False, "save should reject event_bus without event_name"
+        except ValueError as ex:
+            assert "integration.webhook.event_bus.event_name é obrigatório" in str(ex)
+
+
+def test_save_rejects_mqtt_integration_with_empty_dlq(tmp_path: Path) -> None:
+        cfg_file = tmp_path / "alexa_bridge.yaml"
+        service = ConfigService(str(cfg_file))
+
+        payload = service.defaults()
+        payload["integration"]["mqtt"]["type"] = "mqtt"
+        payload["integration"]["mqtt"]["mqtt"]["dlq_topic"] = ""
+
+        try:
+            service.save(payload)
+            assert False, "save should reject empty integration mqtt dlq topic"
+        except ValueError as ex:
+            assert "integration.mqtt.mqtt.dlq_topic deve ser string nao vazia" in str(ex)
 
 
 def test_ensure_bridge_yaml_copies_template_when_missing(tmp_path: Path) -> None:

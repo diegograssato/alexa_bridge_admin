@@ -1,14 +1,37 @@
+transport:
+  mqtt_enabled: true
+  webhook_enabled: true
+
 mqtt:
   input_topic: alexa/command
   output_topic: homeassistant/voice/command
   ack_topic: homeassistant/voice/ack
   dlq_topic: homeassistant/voice/dlq
 
+integration:
+  mqtt:
+    type: event_bus # mqtt | event_bus
+    mqtt:
+      output_topic: homeassistant/voice/command
+      ack_topic: homeassistant/voice/ack
+      dlq_topic: homeassistant/voice/dlq
+    event_bus:
+      event_name: alexa_bridge.command.mqtt
+
+  webhook:
+    type: event_bus # mqtt | event_bus
+    mqtt:
+      output_topic: homeassistant/webhook/command
+      ack_topic: homeassistant/webhook/ack
+      dlq_topic: homeassistant/webhook/dlq
+    event_bus:
+      event_name: alexa_bridge.command.webhook
+
 # Webhook HTTP opcional (PyScript @webhook_trigger)
-# Se webhook.ids tiver valores, o bridge registra listeners automaticamente.
-# Alterar os ids requer recarregar o PyScript completo (não apenas alexa_bridge_reload).
+# Se webhook.id tiver valor, o bridge registra listener automaticamente.
+# Alterar o id requer recarregar o PyScript completo (não apenas alexa_bridge_reload).
 webhook:
-  ids: [] # ex: ["8e4a7f0c5d9f4e2ea3f4d1b7c9a8e6f5", "a1b2c3d4e5f6"]
+  id: "" # ex: "8e4a7f0c5d9f4e2ea3f4d1b7c9a8e6f5"
 
 security:
   enabled: true

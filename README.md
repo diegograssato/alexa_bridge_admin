@@ -3,6 +3,20 @@
 Bridge em PyScript para integrar Alexa Skill e Home Assistant via MQTT.
 
 O fluxo recebe mensagens da skill em um topico de entrada, resolve dispositivo por alias no YAML e publica evento normalizado para automacoes do Home Assistant.
+
+## Novidades da Versão 0.8.0 / Wrapper 3.4.0
+
+- Entradas MQTT e Webhook com habilitação independente por checkboxes (`transport.mqtt_enabled`, `transport.webhook_enabled`).
+- Integração por origem (`integration.mqtt` e `integration.webhook`) com modo `mqtt` ou `event_bus`.
+- Event Bus simplificado para `event_name` e enriquecido com origem (`provided_by`, `transport_source`).
+- Segurança webhook com suporte a assinatura no header `X-Signature`.
+- Validação de schema reforçada no Raw YAML e no save da API para os novos campos de transporte e integração.
+- Remoção do campo legado `transport.mode`.
+- Auto execução de `pyscript.reload` ao salvar alterações de webhook na interface/API.
+
+Referências:
+- Changelog completo: `CHANGELOG.md`
+- Matriz de combinações de configuração: `DOCKS.md`
  
 ---
 
@@ -27,6 +41,8 @@ O fluxo recebe mensagens da skill em um topico de entrada, resolve dispositivo p
 - [Desenvolvimento Local](#desenvolvimento-local)
 - [Testes](#testes)
 - [Roadmap](#roadmap)
+- [Changelog](CHANGELOG.md)
+- [DOCKS - Combinações de Configuração](DOCKS.md)
 
 ---
 
@@ -211,7 +227,7 @@ O bridge publica em `homeassistant/voice/command` um payload JSON padronizado. U
 - Saída MQTT de erro: `mqtt.dlq_topic`
 - Mapeamento de dispositivos: seção `devices` no YAML
 - Reload de configuração em runtime: serviço `pyscript.alexa_bridge_reload`
-- Versão atual do wrapper: `3.3.0`
+- Versão atual do wrapper: `3.4.0`
 
 ---
 
@@ -326,7 +342,7 @@ sequenceDiagram
     end
 ```
 
-**Webhook HTTP:** a assinatura vai no header `X-Signature` e é computada sobre o body completo:
+**Webhook HTTP:** a assinatura segue o mesmo contrato do MQTT (no payload), aceitando header `X-Signature` apenas como fallback de compatibilidade:
 ```
 X-Signature: <HMAC-SHA256(secret, payload_body)>
 ```
@@ -379,16 +395,15 @@ Com `security.encrypt_payload: true`, o payload não trafega em texto plano no b
 ## Webhook HTTP
 
 Além do trigger MQTT, o bridge suporta receber comandos via HTTP webhook do Home Assistant.
-Basta configurar os IDs em `webhook.ids` no YAML e reiniciar o PyScript — os listeners são registrados automaticamente.
+Basta configurar o ID em `webhook.ids` no YAML e reiniciar o PyScript — o listener é registrado automaticamente.
 
 ```yaml
 webhook:
   ids:
     - "8e4a7f0c5d9f4e2ea3f4d1b7c9a8e6f5"
-    - "a1b2c3d4e5f6"
 ```
 
-Suporta até 20 IDs. Deixe `ids: []` para desativar webhook.
+Suporta apenas 1 ID. Deixe `ids: []` para desativar webhook.
 
 Compatibilidade: o formato legado `webhook.id` (ID único) ainda é aceito.
 
@@ -401,8 +416,8 @@ Lambda (transport: http)
          Body: {"signature": "abc", "content": {...}}
 
 Bridge (@webhook_trigger)
-  ├─ Extrai X-Signature do header
-  ├─ HMAC-SHA256(secret, payload_body) == X-Signature ?
+  ├─ Extrai assinatura do payload (header X-Signature como fallback legado)
+  ├─ HMAC-SHA256(secret, signing_base) == assinatura ?
   │     ❌ inválida → return (sem ACK/DLQ)
   │     ✅ válida → _process_command("webhook", ...)
   └─ mesma pipeline MQTT: parse → idempotência → resolve → publish
@@ -410,7 +425,7 @@ Bridge (@webhook_trigger)
 
 ### Validação de schema
 
-- `webhook.ids` deve ser lista de strings (máximo 20)
+- `webhook.ids` deve ser lista de strings (máximo 1)
 - `webhook.id` legado ainda é aceito
 
 > ⚠️ Alterar `webhook.ids`/`webhook.id` requer recarregar o **PyScript completo** (não apenas `alexa_bridge_reload`), pois o `@webhook_trigger` é registrado apenas no boot.
@@ -457,7 +472,7 @@ Também aceita envelope com `content`:
   "correlation_id": "req-123",
   "received_topic": "alexa/command",
   "time": "2026-07-13 21:00:00",
-  "wrapper_version": "3.3.0"
+  "wrapper_version": "3.4.0"
 }
 ```
 
@@ -472,7 +487,7 @@ Também aceita envelope com `content`:
   "received_topic": "alexa/command",
   "correlation_id": "req-123",
   "time": "2026-07-13 21:00:00",
-  "wrapper_version": "3.3.0"
+  "wrapper_version": "3.4.0"
 }
 ```
 
@@ -485,7 +500,7 @@ Também aceita envelope com `content`:
   "received_topic": "alexa/command",
   "correlation_id": "req-123",
   "time": "2026-07-13 21:00:00",
-  "wrapper_version": "3.3.0"
+  "wrapper_version": "3.4.0"
 }
 ```
 
@@ -625,7 +640,7 @@ pytest
 - Saida MQTT de erro: mqtt.dlq_topic
 - Mapeamento de dispositivos: secao devices no YAML
 - Reload de configuracao em runtime: servico pyscript.alexa_bridge_reload
-- Versao atual do wrapper: 3.3.0
+- Versao atual do wrapper: 3.4.0
 
 ## Estrutura do Projeto
 
@@ -741,7 +756,7 @@ Publicado em mqtt.output_topic:
   "correlation_id": "req-123",
   "received_topic": "alexa/command",
   "time": "2026-07-13 21:00:00",
-  "wrapper_version": "3.3.0"
+  "wrapper_version": "3.4.0"
 }
 ```
 
@@ -763,7 +778,7 @@ Publicado em mqtt.ack_topic:
   "received_topic": "alexa/command",
   "correlation_id": "req-123",
   "time": "2026-07-13 21:00:00",
-  "wrapper_version": "3.3.0"
+  "wrapper_version": "3.4.0"
 }
 ```
 
@@ -780,7 +795,7 @@ Publicado em mqtt.dlq_topic quando ocorre rejeicao de entrada:
   "received_topic": "alexa/command",
   "correlation_id": "req-123",
   "time": "2026-07-13 21:00:00",
-  "wrapper_version": "3.3.0"
+  "wrapper_version": "3.4.0"
 }
 ```
 

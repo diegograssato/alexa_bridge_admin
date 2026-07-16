@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import json
+import re
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -22,11 +23,39 @@ class ConfigService:
 
     def defaults(self) -> dict[str, Any]:
         return {
+            "transport": {
+                "mqtt_enabled": True,
+                "webhook_enabled": True,
+            },
             "mqtt": {
                 "input_topic": "alexa/command",
                 "output_topic": "homeassistant/voice/command",
                 "ack_topic": "homeassistant/voice/ack",
                 "dlq_topic": "homeassistant/voice/dlq",
+            },
+            "integration": {
+                "mqtt": {
+                    "type": "event_bus",
+                    "mqtt": {
+                        "output_topic": "homeassistant/voice/command",
+                        "ack_topic": "homeassistant/voice/ack",
+                        "dlq_topic": "homeassistant/voice/dlq",
+                    },
+                    "event_bus": {
+                        "event_name": "alexa_bridge.command.mqtt",
+                    },
+                },
+                "webhook": {
+                    "type": "event_bus",
+                    "mqtt": {
+                        "output_topic": "homeassistant/voice/command",
+                        "ack_topic": "homeassistant/voice/ack",
+                        "dlq_topic": "homeassistant/voice/dlq",
+                    },
+                    "event_bus": {
+                        "event_name": "alexa_bridge.command.webhook",
+                    },
+                },
             },
             "security": {
                 "enabled": False,
@@ -34,7 +63,7 @@ class ConfigService:
                 "encrypt_payload": False,
             },
             "webhook": {
-                "ids": [],
+                "id": "",
             },
             "commands": {
                 "off_keywords": ["desliga", "desligar", "turn off"],
@@ -63,6 +92,65 @@ class ConfigService:
         return self.config_path.read_text(encoding="utf-8")
 
     def save(self, data: dict[str, Any]) -> None:
+        transport = data.get("transport") if isinstance(data, dict) else None
+        if not isinstance(transport, dict):
+            raise ValueError("Campo transport deve ser um objeto")
+        if not isinstance(transport.get("mqtt_enabled", True), bool):
+            raise ValueError("transport.mqtt_enabled deve ser booleano")
+        if not isinstance(transport.get("webhook_enabled", True), bool):
+            raise ValueError("transport.webhook_enabled deve ser booleano")
+        if not transport.get("mqtt_enabled", True) and not transport.get("webhook_enabled", True):
+            raise ValueError("Pelo menos um transporte deve estar habilitado: transport.mqtt_enabled ou transport.webhook_enabled")
+        integration = data.get("integration") if isinstance(data, dict) else None
+        if integration is not None and not isinstance(integration, dict):
+            raise ValueError("Campo integration deve ser um objeto")
+
+        mqtt_root = data.get("mqtt") if isinstance(data, dict) else None
+        if not isinstance(mqtt_root, dict):
+            raise ValueError("Campo mqtt deve ser um objeto")
+        input_topic = str(mqtt_root.get("input_topic", "")).strip()
+        if not self._is_valid_mqtt_topic(input_topic):
+            raise ValueError("mqtt.input_topic inválido (exemplo válido: alexa/command)")
+
+        self._validate_integration(integration or {}, mqtt_root)
+
+        webhook = data.get("webhook") if isinstance(data, dict) else None
+        if not isinstance(webhook, dict):
+            raise ValueError("Campo webhook deve ser um objeto")
+
+        webhook_id = ""
+        wh_ids = webhook.get("ids")
+        if isinstance(wh_ids, list) and len(wh_ids) > 1:
+            raise ValueError("webhook.ids suporta no máximo 1 item")
+        wh_id_raw = webhook.get("id", "")
+        if wh_id_raw is not None and not isinstance(wh_id_raw, str):
+            raise ValueError("webhook.id deve ser string")
+        webhook_id = str(wh_id_raw).strip() if wh_id_raw is not None else ""
+        if webhook_id and not self._is_valid_webhook_id(webhook_id):
+            raise ValueError("webhook.id inválido (exemplo válido: alexa_command; não pode conter '/')")
+
+        if not webhook_id and isinstance(wh_ids, list) and wh_ids:
+            webhook_id = str(wh_ids[0]).strip()
+
+        security = data.get("security") if isinstance(data, dict) else None
+        if not isinstance(security, dict):
+            raise ValueError("Campo security deve ser um objeto")
+        enabled = security.get("enabled")
+        if not isinstance(enabled, bool):
+            raise ValueError("security.enabled deve ser booleano")
+        encrypt_payload = security.get("encrypt_payload")
+        if not isinstance(encrypt_payload, bool):
+            raise ValueError("security.encrypt_payload deve ser booleano")
+        secret = security.get("secret")
+        if not isinstance(secret, str):
+            raise ValueError("security.secret deve ser string")
+        if enabled and not secret.strip():
+            raise ValueError("security.secret deve ser string nao vazia quando security.enabled=true")
+
+        devices = data.get("devices") if isinstance(data, dict) else None
+        if not isinstance(devices, dict):
+            raise ValueError("Campo devices deve ser um objeto")
+
         self._ensure_parent_dir()
         backup = self._backup_path()
         if self.config_path.exists():
@@ -77,8 +165,77 @@ class ConfigService:
             raise ValueError("YAML precisa ser um objeto no nivel raiz")
         self.save(parsed)
 
+    @staticmethod
+    def _is_valid_mqtt_topic(topic: str) -> bool:
+        if not isinstance(topic, str):
+            return False
+        value = topic.strip()
+        if not value or value.startswith("/") or value.endswith("/"):
+            return False
+        return re.match(r"^[A-Za-z0-9_./#+-]+$", value) is not None
+
+    @staticmethod
+    def _is_valid_webhook_id(webhook_id: str) -> bool:
+        if not isinstance(webhook_id, str):
+            return False
+        value = webhook_id.strip()
+        if not value:
+            return True
+        if "/" in value:
+            return False
+        return re.match(r"^[A-Za-z0-9_-]+$", value) is not None
+
+    @staticmethod
+    def _is_valid_event_name(name: str) -> bool:
+        if not isinstance(name, str):
+            return False
+        value = name.strip()
+        if not value:
+            return False
+        return re.match(r"^[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*$", value) is not None
+
+    def _validate_integration(self, integration: dict[str, Any], mqtt_root: Any | None = None) -> None:
+        if not isinstance(integration, dict):
+            raise ValueError("Campo integration deve ser um objeto")
+
+        for source in ["mqtt", "webhook"]:
+            source_cfg = integration.get(source)
+            if source_cfg is None:
+                raise ValueError(f"integration.{source} é obrigatório")
+            if not isinstance(source_cfg, dict):
+                raise ValueError(f"integration.{source} deve ser um objeto")
+
+            if "type" not in source_cfg:
+                raise ValueError(f"integration.{source}.type é obrigatório")
+
+            mode = str(source_cfg.get("type", "")).strip().lower()
+            if mode not in {"mqtt", "event_bus"}:
+                raise ValueError(f"integration.{source}.type deve ser 'mqtt' ou 'event_bus'")
+
+            if mode == "mqtt":
+                mqtt_cfg = source_cfg.get("mqtt")
+                if not isinstance(mqtt_cfg, dict):
+                    raise ValueError(f"integration.{source}.mqtt deve ser um objeto")
+                for key in ["output_topic", "ack_topic", "dlq_topic"]:
+                    value = mqtt_cfg.get(key)
+                    if not isinstance(value, str) or not value.strip():
+                        raise ValueError(f"integration.{source}.mqtt.{key} deve ser string nao vazia")
+
+            if mode == "event_bus":
+                event_cfg = source_cfg.get("event_bus")
+                if not isinstance(event_cfg, dict):
+                    raise ValueError(f"integration.{source}.event_bus deve ser um objeto")
+                if "event_name" not in event_cfg:
+                    raise ValueError(f"integration.{source}.event_bus.event_name é obrigatório")
+                event_name = event_cfg.get("event_name")
+                if not self._is_valid_event_name(str(event_name)):
+                    raise ValueError(
+                        f"integration.{source}.event_bus.event_name inválido "
+                        "(exemplos válidos: alexa_command ou alexa_bridge.command.mqtt)"
+                    )
+
     def normalized_webhook_ids(self, config: dict[str, Any] | None = None) -> list[str]:
-        """Extrai e normaliza webhook ids do config (inclui fallback legado webhook.id)."""
+        """Extrai e normaliza webhook ids (apenas 1 id ativo, com fallback legado webhook.id)."""
         cfg = config if isinstance(config, dict) else {}
         webhook = cfg.get("webhook")
         if not isinstance(webhook, dict):
@@ -102,7 +259,7 @@ class ConfigService:
                 continue
             seen.add(wid)
             normalized.append(wid)
-            if len(normalized) >= 20:
+            if len(normalized) >= 1:
                 break
         return normalized
 
@@ -134,6 +291,78 @@ class ConfigService:
                 value = mqtt.get(key)
                 if not isinstance(value, str) or not value.strip():
                     errors.append(f"mqtt.{key} deve ser string nao vazia")
+            if not self._is_valid_mqtt_topic(str(mqtt.get("input_topic", ""))):
+                errors.append("mqtt.input_topic inválido (exemplo válido: alexa/command)")
+
+        transport = parsed.get("transport")
+        if transport is None:
+            errors.append("Campo transport é obrigatório")
+        elif not isinstance(transport, dict):
+            errors.append("Campo transport deve ser um objeto")
+        else:
+            if "mqtt_enabled" not in transport:
+                errors.append("transport.mqtt_enabled é obrigatório")
+            mqtt_enabled = transport.get("mqtt_enabled")
+            if not isinstance(mqtt_enabled, bool):
+                errors.append("transport.mqtt_enabled deve ser booleano")
+
+            if "webhook_enabled" not in transport:
+                errors.append("transport.webhook_enabled é obrigatório")
+            webhook_enabled = transport.get("webhook_enabled")
+            if not isinstance(webhook_enabled, bool):
+                errors.append("transport.webhook_enabled deve ser booleano")
+
+            if isinstance(mqtt_enabled, bool) and isinstance(webhook_enabled, bool):
+                if not mqtt_enabled and not webhook_enabled:
+                    errors.append("Pelo menos um transporte deve estar habilitado: transport.mqtt_enabled ou transport.webhook_enabled")
+
+        integration = parsed.get("integration")
+        if integration is None:
+            errors.append("Campo integration é obrigatório")
+        elif not isinstance(integration, dict):
+            errors.append("Campo integration deve ser um objeto")
+        else:
+            for source in ["mqtt", "webhook"]:
+                source_cfg = integration.get(source)
+                if source_cfg is None:
+                    errors.append(f"integration.{source} é obrigatório")
+                    continue
+                if not isinstance(source_cfg, dict):
+                    errors.append(f"integration.{source} deve ser um objeto")
+                    continue
+
+                if "type" not in source_cfg:
+                    errors.append(f"integration.{source}.type é obrigatório")
+                    continue
+
+                itype = str(source_cfg.get("type", "")).strip().lower()
+                if itype not in {"mqtt", "event_bus"}:
+                    errors.append(f"integration.{source}.type deve ser 'mqtt' ou 'event_bus'")
+                    continue
+
+                if itype == "mqtt":
+                    mqtt_cfg = source_cfg.get("mqtt")
+                    if not isinstance(mqtt_cfg, dict):
+                        errors.append(f"integration.{source}.mqtt deve ser um objeto")
+                    else:
+                        for key in ["output_topic", "ack_topic", "dlq_topic"]:
+                            value = mqtt_cfg.get(key)
+                            if not isinstance(value, str) or not value.strip():
+                                errors.append(f"integration.{source}.mqtt.{key} deve ser string nao vazia")
+
+                if itype == "event_bus":
+                    event_cfg = source_cfg.get("event_bus")
+                    if not isinstance(event_cfg, dict):
+                        errors.append(f"integration.{source}.event_bus deve ser um objeto")
+                    else:
+                        if "event_name" not in event_cfg:
+                            errors.append(f"integration.{source}.event_bus.event_name é obrigatório")
+                        event_name = event_cfg.get("event_name", "")
+                        if not self._is_valid_event_name(str(event_name)):
+                            errors.append(
+                                f"integration.{source}.event_bus.event_name inválido "
+                                "(exemplos válidos: alexa_command ou alexa_bridge.command.mqtt)"
+                            )
 
         commands = parsed.get("commands")
         if not isinstance(commands, dict):
@@ -143,7 +372,11 @@ class ConfigService:
             if not isinstance(off_keywords, list) or not all(isinstance(x, str) for x in off_keywords):
                 errors.append("commands.off_keywords deve ser lista de strings")
 
-        devices = parsed.get("devices", {})
+        if "devices" not in parsed:
+            errors.append("Campo devices é obrigatório")
+            devices = {}
+        else:
+            devices = parsed.get("devices")
         if not isinstance(devices, dict):
             errors.append("Campo devices deve ser um objeto")
         else:
@@ -168,42 +401,59 @@ class ConfigService:
                         errors.append(f"devices.{room}.{entity_id}.aliases deve ser lista de strings")
 
         security = parsed.get("security")
-        if security is not None:
-            if not isinstance(security, dict):
-                errors.append("Campo security deve ser um objeto")
-            else:
-                enabled = security.get("enabled")
-                if enabled is not None and not isinstance(enabled, bool):
-                    errors.append("security.enabled deve ser booleano")
-                secret = security.get("secret")
-                if security.get("enabled") and (not isinstance(secret, str) or not secret.strip()):
-                    errors.append("security.secret deve ser string nao vazia quando security.enabled=true")
-                encrypt_payload = security.get("encrypt_payload")
-                if encrypt_payload is not None and not isinstance(encrypt_payload, bool):
-                    errors.append("security.encrypt_payload deve ser booleano")
+        if security is None:
+            errors.append("Campo security é obrigatório")
+        elif not isinstance(security, dict):
+            errors.append("Campo security deve ser um objeto")
+        else:
+            if "enabled" not in security:
+                errors.append("security.enabled é obrigatório")
+            enabled = security.get("enabled")
+            if not isinstance(enabled, bool):
+                errors.append("security.enabled deve ser booleano")
+
+            if "secret" not in security:
+                errors.append("security.secret é obrigatório")
+            secret = security.get("secret")
+            if not isinstance(secret, str):
+                errors.append("security.secret deve ser string")
+            elif enabled is True and not secret.strip():
+                errors.append("security.secret deve ser string nao vazia quando security.enabled=true")
+
+            if "encrypt_payload" not in security:
+                errors.append("security.encrypt_payload é obrigatório")
+            encrypt_payload = security.get("encrypt_payload")
+            if not isinstance(encrypt_payload, bool):
+                errors.append("security.encrypt_payload deve ser booleano")
 
         webhook = parsed.get("webhook")
-        if webhook is not None:
-            if not isinstance(webhook, dict):
-                errors.append("Campo webhook deve ser um objeto")
-            else:
-                wh_ids = webhook.get("ids")
-                if wh_ids is not None:
-                    if not isinstance(wh_ids, list):
-                        errors.append("webhook.ids deve ser uma lista")
-                    else:
-                        if len(wh_ids) > 20:
-                            errors.append("webhook.ids suporta no máximo 20 itens")
-                        for wid in wh_ids:
-                            w = str(wid).strip()
-                            if not w:
-                                errors.append("webhook.ids não pode conter itens vazios")
-                            elif "/" in w:
-                                errors.append(f"webhook.ids contém ID inválido '{w}' (não pode conter '/')")
-                # Compatibilidade com formato legado (id único)
-                wh_id = str(webhook.get("id", "")).strip()
-                if wh_id and "/" in wh_id:
-                    errors.append("webhook.id não pode conter '/'")
+        if webhook is None:
+            errors.append("Campo webhook é obrigatório")
+        elif not isinstance(webhook, dict):
+            errors.append("Campo webhook deve ser um objeto")
+        else:
+            if "id" not in webhook:
+                errors.append("webhook.id é obrigatório")
+            wh_ids = webhook.get("ids")
+            if wh_ids is not None:
+                if not isinstance(wh_ids, list):
+                    errors.append("webhook.ids deve ser uma lista")
+                else:
+                    if len(wh_ids) > 1:
+                        errors.append("webhook.ids suporta no máximo 1 item")
+                    for wid in wh_ids:
+                        w = str(wid).strip()
+                        if not w:
+                            errors.append("webhook.ids não pode conter itens vazios")
+                        elif "/" in w:
+                            errors.append(f"webhook.ids contém ID inválido '{w}' (não pode conter '/')")
+
+            wh_id_raw = webhook.get("id", "")
+            if wh_id_raw is not None and not isinstance(wh_id_raw, str):
+                errors.append("webhook.id deve ser string")
+            wh_id = str(wh_id_raw).strip() if wh_id_raw is not None else ""
+            if wh_id and not self._is_valid_webhook_id(wh_id):
+                errors.append("webhook.id inválido (exemplo válido: alexa_command; não pode conter '/')")
 
         return {
             "ok": len(errors) == 0,

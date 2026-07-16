@@ -11,7 +11,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 CONFIG_FILE = "/config/pyscript/alexa_bridge.yaml"
 
-VERSION = "3.3.0"
+VERSION = "3.4.0"
 
 # ----------------------------------------------------------
 # Idempotência — cache de correlation_ids já processados
@@ -43,8 +43,8 @@ DEFAULT_INPUT_TOPIC = "alexa/command"
 DEFAULT_OUTPUT_TOPIC = "homeassistant/voice/command"
 DEFAULT_ACK_TOPIC = "homeassistant/voice/ack"
 DEFAULT_DLQ_TOPIC = "homeassistant/voice/dlq"
+DEFAULT_EVENT_NAME = "alexa_bridge.command"
 DEFAULT_OFF_KEYWORDS = ["desliga", "desligar", "turn off"]
-MAX_WEBHOOK_IDS = 20
 
 ACTIVE_CONFIG_FILE = ""
 
@@ -97,13 +97,19 @@ def _extract_signing_base(outer: Any) -> Any:
             "ciphertext": safe_str(outer.get("ciphertext", "")),
         }
 
-    content = outer.get("content", {})
-    if isinstance(content, str):
-        try:
-            content = json.loads(content)
-        except Exception:
-            pass
-    return content
+    if "content" in outer:
+        content = outer.get("content", {})
+        if isinstance(content, str):
+            try:
+                content = json.loads(content)
+            except Exception:
+                pass
+        return content
+
+    # Fallback para payloads planos que carregam assinatura no próprio body.
+    base = dict(outer)
+    base.pop("signature", None)
+    return base
 
 # ==========================================================
 # CONFIG
@@ -122,8 +128,12 @@ def load_config():
             config = {}
         # Defaults defensivos para evitar KeyError em runtime.
         config.setdefault("mqtt", {})
+        config.setdefault("transport", {})
+        config.setdefault("integration", {})
         config.setdefault("commands", {})
         config.setdefault("devices", {})
+        config["transport"].setdefault("mqtt_enabled", True)
+        config["transport"].setdefault("webhook_enabled", True)
         config["mqtt"].setdefault(
             "input_topic",
             DEFAULT_INPUT_TOPIC
@@ -140,6 +150,34 @@ def load_config():
             "dlq_topic",
             DEFAULT_DLQ_TOPIC
         )
+        for source in ["mqtt", "webhook"]:
+            source_cfg = config["integration"].get(source)
+            if not isinstance(source_cfg, dict):
+                source_cfg = {}
+
+            integration_type = safe_str(source_cfg.get("type", "event_bus")).lower()
+            if integration_type not in {"mqtt", "event_bus"}:
+                integration_type = "event_bus"
+            source_cfg["type"] = integration_type
+
+            mqtt_cfg = source_cfg.get("mqtt")
+            if not isinstance(mqtt_cfg, dict):
+                mqtt_cfg = {}
+            mqtt_cfg.setdefault("output_topic", config["mqtt"].get("output_topic", DEFAULT_OUTPUT_TOPIC))
+            mqtt_cfg.setdefault("ack_topic", config["mqtt"].get("ack_topic", DEFAULT_ACK_TOPIC))
+            mqtt_cfg.setdefault("dlq_topic", config["mqtt"].get("dlq_topic", DEFAULT_DLQ_TOPIC))
+            source_cfg["mqtt"] = mqtt_cfg
+
+            event_cfg = source_cfg.get("event_bus")
+            if not isinstance(event_cfg, dict):
+                event_cfg = {}
+            event_cfg.setdefault("event_name", f"{DEFAULT_EVENT_NAME}.{source}")
+            source_cfg["event_bus"] = event_cfg
+
+            config["integration"][source] = source_cfg
+
+        config.setdefault("webhook", {})
+        config["webhook"].setdefault("id", "")
         config["commands"].setdefault(
             "off_keywords",
             DEFAULT_OFF_KEYWORDS
@@ -196,35 +234,6 @@ def build_device_index(config):
     return index
 
 
-def extract_webhook_ids(config):
-    """Extrai, normaliza e limita IDs de webhook (máx. 20)."""
-    webhook_cfg = config.get("webhook", {})
-    raw_ids = []
-
-    if isinstance(webhook_cfg, dict):
-        ids = webhook_cfg.get("ids")
-        if isinstance(ids, list):
-            raw_ids = ids
-        else:
-            legacy_id = webhook_cfg.get("id", "")
-            if safe_str(legacy_id):
-                raw_ids = [legacy_id]
-
-    normalized = []
-    seen = set()
-    for item in raw_ids:
-        webhook_id = safe_str(item)
-        if not webhook_id or "/" in webhook_id:
-            continue
-        if webhook_id in seen:
-            continue
-        seen.add(webhook_id)
-        normalized.append(webhook_id)
-        if len(normalized) >= MAX_WEBHOOK_IDS:
-            break
-    return normalized
-
-
 CONFIG = load_config()
 DEVICE_INDEX = build_device_index(CONFIG)
 INPUT_TOPIC = CONFIG.get("mqtt", {}).get(
@@ -246,19 +255,24 @@ DLQ_TOPIC = CONFIG.get("mqtt", {}).get(
 SECURITY = CONFIG.get("security", {})
 
 # ----------------------------------------------------------
-# Webhook — registrado automaticamente para cada webhook.id/webhook.ids.
+# Webhook — registrado automaticamente para webhook.id.
 # O @webhook_trigger é registrado apenas no boot do PyScript;
-# para alterar os ids é preciso recarregar o PyScript completo.
+# para alterar o id é preciso recarregar o PyScript completo.
 # ----------------------------------------------------------
-WEBHOOK_IDS = extract_webhook_ids(CONFIG)
+webhook_cfg = CONFIG.get("webhook", {})
+if not isinstance(webhook_cfg, dict):
+    webhook_cfg = {}
+WEBHOOK_ID = safe_str(webhook_cfg.get("id", ""))
+REGISTERED_WEBHOOK_ID = WEBHOOK_ID or "alexa_bridge_webhook_not_configured"
 
 log.info(
     f"[AlexaBridge] Seguranca: enabled={SECURITY.get('enabled', False)}"
 )
-if WEBHOOK_IDS:
-    log.info(f"[AlexaBridge] Webhook ativo: ids={WEBHOOK_IDS}")
+log.info("[AlexaBridge] Listeners ativos: MQTT + Webhook")
+if WEBHOOK_ID:
+    log.info(f"[AlexaBridge] Webhook ativo: id={WEBHOOK_ID}")
 else:
-    log.info("[AlexaBridge] Webhook inativo (webhook.id/webhook.ids não configurado)")
+    log.info("[AlexaBridge] Webhook inativo (webhook.id não configurado)")
 
 
 # ==========================================================
@@ -310,7 +324,7 @@ def parse_payload(payload):
             data = content
     return data
 
-def verify_hmac(raw_payload, correlation_id=""):
+def verify_hmac(raw_payload, correlation_id="", forced_signature=None):
     """Verifica assinatura HMAC-SHA256 do payload quando presente.
 
     Aceita payloads sem assinatura (retrocompatível) mas rejeita payloads com
@@ -331,14 +345,17 @@ def verify_hmac(raw_payload, correlation_id=""):
         except Exception:
             return True  # será tratado por parse_payload
 
-    if not isinstance(outer, dict) or "signature" not in outer:
+    received_sig = safe_str(forced_signature)
+    if received_sig == "" and isinstance(outer, dict):
+        received_sig = safe_str(outer.get("signature", ""))
+
+    if not received_sig:
         log.warning(
             f"[{correlation_id}] [AlexaBridge] [HMAC] "
             f"Payload sem assinatura — aceito (modo retrocompatível)"
         )
         return True
 
-    received_sig = safe_str(outer.get("signature", ""))
     signing_base = _extract_signing_base(outer)
 
     secret = get_secret()
@@ -364,6 +381,56 @@ def verify_hmac(raw_payload, correlation_id=""):
 
     log.info(f"[{correlation_id}] [AlexaBridge] [HMAC] Assinatura válida")
     return True
+
+
+def _normalize_integration_type(value):
+    mode = safe_str(value).lower()
+    if mode not in {"mqtt", "event_bus"}:
+        return "mqtt"
+    return mode
+
+
+def is_transport_enabled(source):
+    source_key = normalize_key(source)
+    transport_cfg = CONFIG.get("transport", {})
+    if not isinstance(transport_cfg, dict):
+        return True
+    if source_key == "mqtt":
+        return bool(transport_cfg.get("mqtt_enabled", True))
+    if source_key == "webhook":
+        return bool(transport_cfg.get("webhook_enabled", True))
+    return True
+
+
+def get_integration_config(source):
+    source_key = normalize_key(source)
+    source_cfg = CONFIG.get("integration", {}).get(source_key, {})
+    if not isinstance(source_cfg, dict):
+        source_cfg = {}
+
+    integration_type = _normalize_integration_type(source_cfg.get("type", "event_bus"))
+
+    mqtt_cfg = source_cfg.get("mqtt", {})
+    if not isinstance(mqtt_cfg, dict):
+        mqtt_cfg = {}
+    mqtt_cfg = {
+        "output_topic": safe_str(mqtt_cfg.get("output_topic", OUTPUT_TOPIC)) or OUTPUT_TOPIC,
+        "ack_topic": safe_str(mqtt_cfg.get("ack_topic", ACK_TOPIC)) or ACK_TOPIC,
+        "dlq_topic": safe_str(mqtt_cfg.get("dlq_topic", DLQ_TOPIC)) or DLQ_TOPIC,
+    }
+
+    event_cfg = source_cfg.get("event_bus", {})
+    if not isinstance(event_cfg, dict):
+        event_cfg = {}
+    event_cfg = {
+        "event_name": safe_str(event_cfg.get("event_name", f"{DEFAULT_EVENT_NAME}.{source_key}")) or f"{DEFAULT_EVENT_NAME}.{source_key}",
+    }
+
+    return {
+        "type": integration_type,
+        "mqtt": mqtt_cfg,
+        "event_bus": event_cfg,
+    }
 
 
 def decrypt_payload(data, correlation_id=""):
@@ -525,6 +592,27 @@ def publish_event(topic, payload, correlation_id=""):
     return False
 
 
+def publish_internal_event(event_name, payload, correlation_id="", source=""):
+    """Publica evento no Event Bus interno do Home Assistant com metadados de origem."""
+    source_name = safe_str(source).lower() or "unknown"
+    event_payload = dict(payload) if isinstance(payload, dict) else {"payload": payload}
+    event_payload["provided_by"] = source_name
+    event_payload["transport_source"] = source_name
+    try:
+        # PyScript expõe event.fire(name, **kwargs)
+        event.fire(event_name, **event_payload)
+        return True
+    except TypeError:
+        # Fallback para ambientes com assinatura diferente.
+        event.fire(event_name, payload=event_payload)
+        return True
+    except Exception as ex:
+        log.error(
+            f"[{correlation_id}] [AlexaBridge] Falha ao publicar no Event Bus '{event_name}': {ex}"
+        )
+        return False
+
+
 def _purge_expired_ids() -> None:
     """Remove correlation_ids expirados do cache de idempotência."""
     now = time.time()
@@ -588,7 +676,7 @@ def build_correlation_id(data):
     return str(uuid.uuid4())
 
 
-def publish_dlq(topic, raw_payload, reason, correlation_id=""):
+def publish_dlq(topic, raw_payload, reason, correlation_id="", source="mqtt"):
     """Publica mensagens inválidas em DLQ para análise e reprocessamento."""
     payload = {
         "reason": reason,
@@ -600,10 +688,16 @@ def publish_dlq(topic, raw_payload, reason, correlation_id=""):
         ),
         "bridge_version": VERSION
     }
-    return publish_event(DLQ_TOPIC, payload, correlation_id)
+    integration = get_integration_config(source)
+    if integration["type"] == "event_bus":
+        log.info(
+            f"[{correlation_id}] [AlexaBridge] [DLQ] Event Bus não suporta DLQ — evento ignorado"
+        )
+        return False
+    return publish_event(integration["mqtt"]["dlq_topic"], payload, correlation_id)
 
 
-def publish_ack(topic, correlation_id, status, detail=""):
+def publish_ack(topic, correlation_id, status, detail="", source="mqtt"):
     """Publica ACK de processamento para observabilidade do fluxo."""
     payload = {
         "status": safe_str(status),
@@ -615,7 +709,13 @@ def publish_ack(topic, correlation_id, status, detail=""):
         ),
         "bridge_version": VERSION
     }
-    return publish_event(ACK_TOPIC, payload, correlation_id)
+    integration = get_integration_config(source)
+    if integration["type"] == "event_bus":
+        log.info(
+            f"[{correlation_id}] [AlexaBridge] [ACK] Event Bus não suporta ACK — evento ignorado"
+        )
+        return False
+    return publish_event(integration["mqtt"]["ack_topic"], payload, correlation_id)
 
 
 def log_received(device, entity, room, command, agent="", msg_type="", correlation_id=""):
@@ -631,7 +731,7 @@ def log_published(topic, payload, correlation_id=""):
     """Registra no log o tópico e payload publicados."""
     log.info(
         f"[{correlation_id}] [AlexaBridge] [PUBLISHED] "
-        f"Tópico: '{topic}'"
+        f"Canal: '{topic}'"
     )
     log.info(
         f"[{correlation_id}] [AlexaBridge] [PUBLISHED] "
@@ -684,6 +784,7 @@ def alexa_bridge_reload():
     log.info(
         f"[AlexaBridge] Segurança: enabled={SECURITY.get('enabled', False)}"
     )
+    log.info("[AlexaBridge] Listeners ativos: MQTT + Webhook")
 
 
 @service
@@ -708,7 +809,7 @@ def _process_command(source, raw_payload, topic, correlation_id_hint=None, hmac_
     """
     data = parse_payload(raw_payload)
     if not data:
-        publish_dlq(topic, raw_payload, "invalid_payload")
+        publish_dlq(topic, raw_payload, "invalid_payload", source=source)
         return
 
     correlation_id = correlation_id_hint or build_correlation_id(data)
@@ -716,14 +817,14 @@ def _process_command(source, raw_payload, topic, correlation_id_hint=None, hmac_
 
     if not hmac_verified:
         if not verify_hmac(raw_payload, correlation_id):
-            publish_dlq(topic, raw_payload, "invalid_signature", correlation_id)
-            publish_ack(topic, correlation_id, "error", "invalid_signature")
+            publish_dlq(topic, raw_payload, "invalid_signature", correlation_id, source=source)
+            publish_ack(topic, correlation_id, "error", "invalid_signature", source=source)
             return
 
     data = decrypt_payload(data, correlation_id)
     if not data:
-        publish_dlq(topic, raw_payload, "decrypt_failed", correlation_id)
-        publish_ack(topic, correlation_id, "error", "decrypt_failed")
+        publish_dlq(topic, raw_payload, "decrypt_failed", correlation_id, source=source)
+        publish_ack(topic, correlation_id, "error", "decrypt_failed", source=source)
         return
 
     # --- Idempotência: descarta reprocessamento dentro do TTL ---
@@ -746,21 +847,21 @@ def _process_command(source, raw_payload, topic, correlation_id_hint=None, hmac_
                 f"[{correlation_id}] [AlexaBridge] TYPE inválido: '{raw_type}'. "
                 f"Aceitos: {sorted(VALID_TYPES)}"
             )
-            publish_dlq(topic, raw_payload, "invalid_type", correlation_id)
-            publish_ack(topic, correlation_id, "error", "invalid_type")
+            publish_dlq(topic, raw_payload, "invalid_type", correlation_id, source=source)
+            publish_ack(topic, correlation_id, "error", "invalid_type", source=source)
             return
         msg_type = normalized_type
 
     if not device:
         log.warning(f"[{correlation_id}] [AlexaBridge] DEVICE não informado")
-        publish_dlq(topic, raw_payload, "missing_device", correlation_id)
-        publish_ack(topic, correlation_id, "error", "missing_device")
+        publish_dlq(topic, raw_payload, "missing_device", correlation_id, source=source)
+        publish_ack(topic, correlation_id, "error", "missing_device", source=source)
         return
 
     if not command:
         log.warning(f"[{correlation_id}] [AlexaBridge] VALUE não informado")
-        publish_dlq(topic, raw_payload, "missing_command", correlation_id)
-        publish_ack(topic, correlation_id, "error", "missing_command")
+        publish_dlq(topic, raw_payload, "missing_command", correlation_id, source=source)
+        publish_ack(topic, correlation_id, "error", "missing_command", source=source)
         return
 
     info = get_device_info(device)
@@ -769,8 +870,8 @@ def _process_command(source, raw_payload, topic, correlation_id_hint=None, hmac_
             f"[{correlation_id}] [AlexaBridge] "
             f"Dispositivo não mapeado: '{device}'"
         )
-        publish_dlq(topic, raw_payload, "device_not_mapped", correlation_id)
-        publish_ack(topic, correlation_id, "error", "device_not_mapped")
+        publish_dlq(topic, raw_payload, "device_not_mapped", correlation_id, source=source)
+        publish_ack(topic, correlation_id, "error", "device_not_mapped", source=source)
         return
 
     room   = info["room"]
@@ -800,17 +901,24 @@ def _process_command(source, raw_payload, topic, correlation_id_hint=None, hmac_
 
     log_received(device, entity, room, command, agent=agent, msg_type=msg_type, correlation_id=correlation_id)
 
-    published = publish_event(OUTPUT_TOPIC, result, correlation_id)
+    integration = get_integration_config(source)
+    if integration["type"] == "event_bus":
+        output_channel = integration["event_bus"]["event_name"]
+        published = publish_internal_event(output_channel, result, correlation_id, source=source)
+    else:
+        output_channel = integration["mqtt"]["output_topic"]
+        published = publish_event(output_channel, result, correlation_id)
+
     if published:
         _mark_processed(correlation_id)
         _write_last_event(agent, msg_type, device, room, correlation_id)
-        publish_ack(topic, correlation_id, "ok", "published")
+        publish_ack(topic, correlation_id, "ok", "published", source=source)
     else:
-        publish_ack(topic, correlation_id, "error", "publish_failed")
-        publish_dlq(topic, raw_payload, "publish_failed", correlation_id)
+        publish_ack(topic, correlation_id, "error", "publish_failed", source=source)
+        publish_dlq(topic, raw_payload, "publish_failed", correlation_id, source=source)
         return
 
-    log_published(OUTPUT_TOPIC, result, correlation_id)
+    log_published(output_channel, result, correlation_id)
 
 
 # ==========================================================
@@ -830,77 +938,46 @@ def alexa_bridge(
         f"[AlexaBridge] "
         f"Mensagem recebida em '{topic}'"
     )
+    if not is_transport_enabled("mqtt"):
+        return
     if not is_allowed_topic(topic):
         return
     _process_command("mqtt", payload, topic)
 
 
 # ==========================================================
-# WEBHOOK TRIGGER (ativo para cada webhook.id/webhook.ids configurado no YAML)
+# WEBHOOK TRIGGER (ativo para webhook.id/webhook.ids configurado no YAML)
 # ==========================================================
 
-def _handle_webhook(payload=None, headers=None, webhook_id=""):
-    """Processa requisição de webhook (compartilhado por todos os IDs)."""
-    correlation_id = str(uuid.uuid4())
+
+@webhook_trigger(REGISTERED_WEBHOOK_ID, local_only=False, methods={"POST"})
+def handle_incoming_webhook(payload=None, request=None, webhook_id=None, **kwargs):
+    """Recebe comandos via Webhook HTTP e delega para _process_command."""
+    if not is_transport_enabled("webhook"):
+        return
+    incoming_webhook_id = safe_str(webhook_id) or WEBHOOK_ID
     log.info(
-        f"[{correlation_id}] [AlexaBridge] [WEBHOOK] Requisição recebida id='{webhook_id}'"
+        f"[AlexaBridge] [WEBHOOK] Requisição recebida id='{incoming_webhook_id}'"
     )
 
-    if SECURITY.get("enabled", False):
-        received_sig = safe_str((headers or {}).get("X-Signature", ""))
-        if not received_sig:
-            log.warning(
-                f"[{correlation_id}] [AlexaBridge] [WEBHOOK] "
-                f"Header X-Signature ausente — rejeitado"
-            )
+    header_signature = ""
+    try:
+        if request is not None and hasattr(request, "headers"):
+            header_signature = safe_str(request.headers.get("X-Signature", ""))
+    except Exception:
+        header_signature = ""
+
+    # Compatibilidade com payload vindo em kwargs quando o runtime não injeta "payload" posicional.
+    raw_payload = payload if payload is not None else kwargs.get("payload")
+    parsed = parse_payload(raw_payload)
+    correlation_id = build_correlation_id(parsed or {}) if isinstance(parsed, dict) else ""
+
+    if header_signature:
+        if not verify_hmac(raw_payload, correlation_id, forced_signature=header_signature):
+            publish_dlq("webhook", raw_payload, "invalid_signature", correlation_id, source="webhook")
+            publish_ack("webhook", correlation_id, "error", "invalid_signature", source="webhook")
             return
+        _process_command("webhook", raw_payload, "webhook", correlation_id_hint=correlation_id, hmac_verified=True)
+        return
 
-        secret = get_secret()
-        if not secret:
-            log.warning(
-                f"[{correlation_id}] [AlexaBridge] [WEBHOOK] "
-                f"Secret não configurado — verificando sem autenticação"
-            )
-        else:
-            # Extrai base de assinatura (content plaintext ou envelope cifrado).
-            try:
-                outer = json.loads(safe_str(payload))
-                signing_base = _extract_signing_base(outer)
-            except Exception:
-                signing_base = payload
-            expected = hmac.new(
-                secret.encode("utf-8"),
-                json.dumps(signing_base, sort_keys=True).encode("utf-8"),
-                sha256
-            ).hexdigest()
-
-            if not hmac.compare_digest(received_sig, expected):
-                log.warning(
-                    f"[{correlation_id}] [AlexaBridge] [WEBHOOK] "
-                    f"Assinatura inválida — rejeitado"
-                )
-                return
-
-            log.info(
-                f"[{correlation_id}] [AlexaBridge] [WEBHOOK] Assinatura válida"
-            )
-
-    _process_command(
-        "webhook",
-        payload,
-        "webhook",
-        correlation_id_hint=correlation_id,
-        hmac_verified=True
-    )
-
-
-for _webhook_id in WEBHOOK_IDS:
-    @webhook_trigger(_webhook_id)
-    def _alexa_webhook(payload=None, headers=None, _webhook_id=_webhook_id):
-        """Recebe comandos via Webhook HTTP e delega para _process_command.
-
-        Verifica a assinatura HMAC-SHA256 no header X-Signature antes de
-        processar. A assinatura deve ser computada sobre o payload body inteiro
-        usando o mesmo secret configurado em security.secret.
-        """
-        _handle_webhook(payload=payload, headers=headers, webhook_id=_webhook_id)
+    _process_command("webhook", raw_payload, "webhook", correlation_id_hint=correlation_id)

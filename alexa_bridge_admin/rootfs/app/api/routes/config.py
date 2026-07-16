@@ -4,9 +4,11 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.services.config_service import ConfigService
+from app.services.reload_service import ReloadService
 
 router = APIRouter(prefix="/api", tags=["config"])
 service = ConfigService()
+reload_service = ReloadService()
 
 
 class RawYamlRequest(BaseModel):
@@ -25,12 +27,30 @@ def put_config(payload: dict) -> dict:
 
     previous = service.load()
     webhook_changed = service.webhook_ids_changed(previous, payload)
-    service.save(payload)
+    try:
+        service.save(payload)
+    except ValueError as ex:
+        raise HTTPException(status_code=400, detail=str(ex)) from ex
+
+    reload_result = {"ok": True, "detail": "nao_necessario"}
+    if webhook_changed:
+        reload_result = reload_service.reload_pyscript_runtime()
+        if reload_result.get("ok"):
+            service.append_audit(action="AUTO_PYSCRIPT_RELOAD", detail="pyscript.reload apos alteracao de webhook")
+        else:
+            service.append_audit(
+                action="AUTO_PYSCRIPT_RELOAD_FAILED",
+                detail=str(reload_result.get("detail", "falha no pyscript.reload")),
+            )
+
     service.append_audit(action="UPDATE_CONFIG", detail="Configuracao salva via API")
     return {
         "ok": True,
         "detail": "Configuracao salva",
-        "requires_pyscript_restart": webhook_changed,
+        "requires_pyscript_restart": webhook_changed and not reload_result.get("ok", False),
+        "auto_pyscript_reload": webhook_changed,
+        "pyscript_reload_ok": bool(reload_result.get("ok", False)) if webhook_changed else True,
+        "pyscript_reload_detail": reload_result.get("detail", "nao_necessario"),
         "restart_reason": "webhook_ids_changed" if webhook_changed else "",
     }
 
@@ -64,9 +84,23 @@ def put_yaml(payload: RawYamlRequest) -> dict:
     current = service.load()
     webhook_changed = service.webhook_ids_changed(previous, current)
 
+    reload_result = {"ok": True, "detail": "nao_necessario"}
+    if webhook_changed:
+        reload_result = reload_service.reload_pyscript_runtime()
+        if reload_result.get("ok"):
+            service.append_audit(action="AUTO_PYSCRIPT_RELOAD", detail="pyscript.reload apos alteracao de webhook (raw yaml)")
+        else:
+            service.append_audit(
+                action="AUTO_PYSCRIPT_RELOAD_FAILED",
+                detail=str(reload_result.get("detail", "falha no pyscript.reload")),
+            )
+
     return {
         "ok": True,
         "detail": "YAML salvo",
-        "requires_pyscript_restart": webhook_changed,
+        "requires_pyscript_restart": webhook_changed and not reload_result.get("ok", False),
+        "auto_pyscript_reload": webhook_changed,
+        "pyscript_reload_ok": bool(reload_result.get("ok", False)) if webhook_changed else True,
+        "pyscript_reload_detail": reload_result.get("detail", "nao_necessario"),
         "restart_reason": "webhook_ids_changed" if webhook_changed else "",
     }

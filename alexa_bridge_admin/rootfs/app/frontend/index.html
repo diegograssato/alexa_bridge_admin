@@ -304,7 +304,7 @@
         .kpis {
             display: grid;
             gap: 10px;
-            grid-template-columns: repeat(5, minmax(0, 1fr));
+            grid-template-columns: repeat(6, minmax(0, 1fr));
             margin-bottom: 14px;
         }
 
@@ -324,7 +324,7 @@
             background: var(--panel);
             border: 1px solid var(--line);
             border-radius: var(--r-lg);
-            padding: 14px;
+            padding: 12px;
         }
 
         .kpi .k {
@@ -337,7 +337,7 @@
 
         .kpi .v {
             margin-top: 8px;
-            font-size: 22px;
+            font-size: 20px;
             font-weight: 700;
             color: var(--bright);
             line-height: 1.2;
@@ -572,6 +572,26 @@
             display: none;
         }
 
+        .hidden-by-mode {
+            display: none !important;
+        }
+
+        .cfg-panel {
+            display: none;
+        }
+
+        .cfg-panel.active {
+            display: block;
+        }
+
+        .integration-subpanel {
+            display: none;
+        }
+
+        .integration-subpanel.active {
+            display: grid;
+        }
+
         .modal {
             position: fixed;
             inset: 0;
@@ -694,6 +714,14 @@
                     <div class="k">&#127908; Último Agent</div>
                     <div class="v" id="kpi-agent" style="font-size:14px;word-break:break-all">-</div>
                 </div>
+                <div class="kpi">
+                    <div class="k">Modo Operante</div>
+                    <div class="v" id="kpi-mode" style="font-size:14px;word-break:break-all">-</div>
+                </div>
+                <div class="kpi">
+                    <div class="k" id="kpi-channel-label">Canal Operante</div>
+                    <div class="v" id="kpi-channel" style="font-size:14px;word-break:break-all">-</div>
+                </div>
             </div>
             <div class="actions">
                 <button class="btn" id="btn-run-reload">Executar Reload PyScript</button>
@@ -703,82 +731,129 @@
 
         <section id="tab-config" class="panel">
             <h2 class="title">Configuração</h2>
-            <div class="row-2">
-                <div class="field"><label>MQTT Input Topic</label><input id="input-topic" /></div>
-                <div class="field"><label>MQTT Output Topic</label><input id="output-topic" /></div>
-                <div class="field"><label>MQTT Ack Topic</label><input id="ack-topic" /></div>
-                <div class="field"><label>MQTT DLQ Topic</label><input id="dlq-topic" /></div>
-            </div>
-            <div class="field" style="margin-top:10px"><label>Off Keywords (virgula)</label><input id="off-keywords" />
+
+            <div class="tabs" style="margin-bottom:12px">
+                <button class="tab active" type="button" data-cfg-tab="security">Segurança</button>
+                <button class="tab" type="button" data-cfg-tab="transport">Transportes</button>
+                <button class="tab" type="button" data-cfg-tab="integration">Integrações</button>
             </div>
 
-            <!-- Seção Segurança -->
-            <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">
-                <div style="font-size:15px;font-weight:700;color:var(--bright);margin-bottom:12px">&#128274; Segurança
-                    (Assinatura HMAC)</div>
-                <div class="row-2" style="align-items:center;margin-bottom:10px">
-                    <label class="checkbox-row"
-                        style="display:flex;align-items:center;gap:8px;color:var(--text);cursor:pointer;font-size:13px;text-transform:none;letter-spacing:0">
-                        <input type="checkbox" id="sec-enabled"
-                            style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer" />
-                        Ativar assinatura HMAC-SHA256
-                    </label>
-                    <div class="field">
-                        <label>Secret (chave de assinatura HMAC)</label>
-                        <input type="password" id="sec-secret" placeholder="chave secreta"
-                            autocomplete="new-password" />
-                    </div>
-                </div>
-                <label class="checkbox-row"
-                    style="display:flex;align-items:center;gap:8px;color:var(--text);cursor:pointer;font-size:13px;text-transform:none;letter-spacing:0">
-                    <input type="checkbox" id="sec-encrypt-payload"
-                        style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer" />
-                    Cifrar payload ponta a ponta (Fernet)
-                </label>
-                <div style="margin-top:6px;font-size:11px;color:var(--muted)">Quando ativo, todos os payloads carregam
-                    assinatura HMAC-SHA256 (campo <code>signature</code> no MQTT e header <code>X-Signature</code> no
-                    Webhook), impedindo forjamento mesmo em tópicos públicos.</div>
-                <div style="margin-top:4px;font-size:11px;color:var(--muted)">Com cifragem ativa, o conteúdo sai da
-                    Skill
-                    como <code>ciphertext</code> e só é aberto no <code>alexa_bridge</code> com o mesmo secret.</div>
-            </div>
-
-            <!-- Seção Webhook -->
-            <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">
-                <div style="font-size:15px;font-weight:700;color:var(--bright);margin-bottom:8px">&#127760; Webhook HTTP
-                </div>
-                <div style="margin-bottom:12px;font-size:12px;color:var(--muted);line-height:1.5">
-                    Recebe comandos via HTTP POST diretamente no HA.<br>
-                    Cadastre at&eacute; <strong>20 Webhook IDs</strong> gerados pelo HA
-                    (<em>Configura&ccedil;&otilde;es &rarr; Automa&ccedil;&otilde;es &rarr; Novo trigger Webhook</em>).
-                    Deixe em branco para desativar.
-                </div>
-                <div class="field">
-                    <label>Webhook IDs</label>
-                    <div class="actions" style="margin-top:0">
-                        <input id="webhook-id-input" placeholder="Digite um webhook ID e clique adicionar" />
-                        <button class="btn" id="btn-add-webhook-id" type="button">Adicionar Webhook ID</button>
-                    </div>
-                    <div class="table-section" style="margin-top:8px">
-                        <div class="table-overflow">
-                            <table class="webhook-ids-table">
-                                <thead>
-                                    <tr>
-                                        <th style="width:70px">#</th>
-                                        <th>Webhook ID</th>
-                                        <th style="width:150px">Ações</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="webhook-ids-body"></tbody>
-                            </table>
+            <div class="cfg-panel active" data-cfg-panel="security">
+                <div style="margin-top:4px;padding-top:8px">
+                    <div style="font-size:15px;font-weight:700;color:var(--bright);margin-bottom:12px">Segurança</div>
+                    <div class="row-2" style="align-items:center;margin-bottom:10px">
+                        <label class="checkbox-row"
+                            style="display:flex;align-items:center;gap:8px;color:var(--text);cursor:pointer;font-size:13px;text-transform:none;letter-spacing:0">
+                            <input type="checkbox" id="sec-enabled"
+                                style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer" />
+                            Ativar HMAC (assinatura)
+                        </label>
+                        <div class="field">
+                            <label>Secret</label>
+                            <input type="password" id="sec-secret" placeholder="chave secreta"
+                                autocomplete="new-password" />
                         </div>
                     </div>
-                    <div id="webhook-ids-meta" style="margin-top:6px;font-size:11px;color:var(--muted)">0 de 20 IDs
-                        cadastrados</div>
+                    <label class="checkbox-row"
+                        style="display:flex;align-items:center;gap:8px;color:var(--text);cursor:pointer;font-size:13px;text-transform:none;letter-spacing:0">
+                        <input type="checkbox" id="sec-encrypt-payload"
+                            style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer" />
+                        Ativar Fernet (ciphertext)
+                    </label>
+                    <div style="margin-top:6px;font-size:11px;color:var(--muted)">Webhook usa header
+                        <code>X-Signature</code>
+                        para validar HMAC quando enviado pela Skill.
+                    </div>
                 </div>
-                <div style="font-size:11px;color:var(--muted);margin-top:6px">
-                    ⚠ Alterar os Webhook IDs exige recarregar o <strong>PyScript completo</strong> no HA
-                    (não apenas o botão <em>Executar Reload PyScript</em>).
+            </div>
+
+            <div class="cfg-panel" data-cfg-panel="transport">
+                <div style="margin-top:4px;padding-top:8px;border-top:1px solid var(--line)">
+                    <div style="font-size:15px;font-weight:700;color:var(--bright);margin-bottom:8px">MQTT</div>
+                    <label class="checkbox-row"
+                        style="display:flex;align-items:center;gap:8px;color:var(--text);cursor:pointer;font-size:13px;text-transform:none;letter-spacing:0;margin-bottom:10px">
+                        <input type="checkbox" id="transport-mqtt-enabled"
+                            style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer" />
+                        Habilitar entrada MQTT
+                    </label>
+                    <div class="row-2">
+                        <div class="field"><label>MQTT Input Topic</label><input id="input-topic" /></div>
+                    </div>
+                </div>
+                <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">
+                    <div style="font-size:15px;font-weight:700;color:var(--bright);margin-bottom:8px">Webhook</div>
+                    <label class="checkbox-row"
+                        style="display:flex;align-items:center;gap:8px;color:var(--text);cursor:pointer;font-size:13px;text-transform:none;letter-spacing:0;margin-bottom:10px">
+                        <input type="checkbox" id="transport-webhook-enabled"
+                            style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer" />
+                        Habilitar entrada Webhook
+                    </label>
+                    <div class="field">
+                        <label>Webhook ID</label>
+                        <input id="webhook-id-input" placeholder="Digite o webhook ID" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="cfg-panel" data-cfg-panel="integration">
+                <div id="integration-card-mqtt" style="margin-top:4px;padding-top:8px;border-top:1px solid var(--line)">
+                    <div style="font-size:15px;font-weight:700;color:var(--bright);margin-bottom:8px">Integração para
+                        entrada MQTT</div>
+                    <div class="row-2">
+                        <div class="field">
+                            <label>Tipo de Integração</label>
+                            <select id="integration-mqtt-type">
+                                <option value="mqtt">MQTT</option>
+                                <option value="event_bus">Internal Bus</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row-2 integration-subpanel" id="integration-mqtt-mqtt-panel" style="margin-top:10px">
+                        <div class="field"><label>Output Topic</label><input id="integration-mqtt-output-topic" /></div>
+                        <div class="field"><label>Ack Topic</label><input id="integration-mqtt-ack-topic" /></div>
+                        <div class="field"><label>DLQ Topic</label><input id="integration-mqtt-dlq-topic" /></div>
+                    </div>
+                    <div class="row-2 integration-subpanel" id="integration-mqtt-event-panel" style="margin-top:10px">
+                        <div class="field"><label>Event Name</label><input id="integration-mqtt-event-name" /></div>
+                    </div>
+                </div>
+
+                <div id="integration-card-webhook"
+                    style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">
+                    <div style="font-size:15px;font-weight:700;color:var(--bright);margin-bottom:8px">Integração para
+                        entrada Webhook</div>
+                    <div class="row-2">
+                        <div class="field">
+                            <label>Tipo de Integração</label>
+                            <select id="integration-webhook-type">
+                                <option value="mqtt">MQTT</option>
+                                <option value="event_bus">Internal Bus</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row-2 integration-subpanel" id="integration-webhook-mqtt-panel" style="margin-top:10px">
+                        <div class="field"><label>Output Topic</label><input id="integration-webhook-output-topic" />
+                        </div>
+                        <div class="field"><label>Ack Topic</label><input id="integration-webhook-ack-topic" /></div>
+                        <div class="field"><label>DLQ Topic</label><input id="integration-webhook-dlq-topic" /></div>
+                    </div>
+                    <div class="row-2 integration-subpanel" id="integration-webhook-event-panel"
+                        style="margin-top:10px">
+                        <div class="field"><label>Event Name</label><input id="integration-webhook-event-name" /></div>
+                    </div>
+                </div>
+
+                <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">
+                    <div style="font-size:15px;font-weight:700;color:var(--bright);margin-bottom:8px">Regra de Estado
+                        On/Off</div>
+                    <div class="field">
+                        <label>Off Keywords (virgula)</label>
+                        <input id="off-keywords" placeholder="desliga, desligar, turn off" />
+                    </div>
+                    <div style="margin-top:6px;font-size:11px;color:var(--muted)">
+                        Essas palavras determinam quando o bridge marca o comando como <strong>state=off</strong>.
+                        Se nenhuma palavra bater no texto recebido, o estado padrão enviado será <strong>on</strong>.
+                    </div>
                 </div>
             </div>
 
@@ -1006,13 +1081,154 @@
             lastAgent: "-",
             editKey: null,
             aliases: [],
-            webhookIds: [],
+            webhookId: "",
             confirmAction: null,
         };
 
         const MAX_ENTITY_ALIASES = 5;
 
         const $ = (id) => document.getElementById(id);
+
+        function normalizeIntegrationType(value) {
+            return String(value || "mqtt").toLowerCase() === "event_bus" ? "event_bus" : "mqtt";
+        }
+
+        function resolveWebhookId(cfg) {
+            const wh = cfg?.webhook || {};
+            if (typeof wh.id === "string" && wh.id.trim()) return wh.id.trim();
+            if (Array.isArray(wh.ids) && wh.ids.length) return String(wh.ids[0] || "").trim();
+            return "";
+        }
+
+        function defaultIntegrationFor(source) {
+            const key = String(source || "mqtt").toLowerCase() === "webhook" ? "webhook" : "mqtt";
+            return {
+                type: "event_bus",
+                mqtt: {
+                    output_topic: "homeassistant/voice/command",
+                    ack_topic: "homeassistant/voice/ack",
+                    dlq_topic: "homeassistant/voice/dlq",
+                },
+                event_bus: {
+                    event_name: `alexa_bridge.command.${key}`,
+                },
+            };
+        }
+
+        function getIntegration(cfg, source) {
+            const base = defaultIntegrationFor(source);
+            const root = cfg?.integration?.[source] || {};
+            return {
+                type: normalizeIntegrationType(root?.type || base.type),
+                mqtt: {
+                    output_topic: root?.mqtt?.output_topic || cfg?.mqtt?.output_topic || base.mqtt.output_topic,
+                    ack_topic: root?.mqtt?.ack_topic || cfg?.mqtt?.ack_topic || base.mqtt.ack_topic,
+                    dlq_topic: root?.mqtt?.dlq_topic || cfg?.mqtt?.dlq_topic || base.mqtt.dlq_topic,
+                },
+                event_bus: {
+                    event_name: root?.event_bus?.event_name || base.event_bus.event_name,
+                },
+            };
+        }
+
+        function switchConfigTab(tab) {
+            document.querySelectorAll("#tab-config [data-cfg-tab]").forEach((b) => b.classList.toggle("active", b.dataset.cfgTab === tab));
+            document.querySelectorAll("#tab-config [data-cfg-panel]").forEach((p) => p.classList.toggle("active", p.dataset.cfgPanel === tab));
+        }
+
+        function applyIntegrationTypeUI(source, type) {
+            const normalizedType = normalizeIntegrationType(type);
+            const mqttPanel = $(`integration-${source}-mqtt-panel`);
+            const eventPanel = $(`integration-${source}-event-panel`);
+            if (mqttPanel) mqttPanel.classList.toggle("active", normalizedType === "mqtt");
+            if (eventPanel) eventPanel.classList.toggle("active", normalizedType === "event_bus");
+        }
+
+        function applyTransportCardsVisibility() {
+            const mqttEnabled = !!$("transport-mqtt-enabled")?.checked;
+            const webhookEnabled = !!$("transport-webhook-enabled")?.checked;
+            const mqttCard = $("integration-card-mqtt");
+            const webhookCard = $("integration-card-webhook");
+            if (mqttCard) mqttCard.classList.toggle("hidden-by-mode", !mqttEnabled);
+            if (webhookCard) webhookCard.classList.toggle("hidden-by-mode", !webhookEnabled);
+            refreshKpisPreview();
+            validateTransportSelection();
+        }
+
+        function isValidMqttTopic(topic) {
+            const value = String(topic || "").trim();
+            if (!value || value.startsWith("/") || value.endsWith("/")) return false;
+            return /^[A-Za-z0-9_./#+-]+$/.test(value);
+        }
+
+        function isValidWebhookId(value) {
+            const webhookId = String(value || "").trim();
+            if (!webhookId) return true;
+            if (webhookId.includes("/")) return false;
+            return /^[A-Za-z0-9_-]+$/.test(webhookId);
+        }
+
+        function isValidEventName(value) {
+            const eventName = String(value || "").trim();
+            if (!eventName) return false;
+            return /^[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*$/.test(eventName);
+        }
+
+        function validateInputFormats() {
+            const mqttInputTopic = $("input-topic").value.trim();
+            if (!isValidMqttTopic(mqttInputTopic)) {
+                throw new Error("mqtt.input_topic inválido (exemplo: alexa/command)");
+            }
+
+            const webhookId = $("webhook-id-input").value.trim();
+            if (!isValidWebhookId(webhookId)) {
+                throw new Error("webhook.id inválido (exemplo: alexa_command; não pode conter '/')");
+            }
+
+            const mqttEnabled = !!$("transport-mqtt-enabled")?.checked;
+            const webhookEnabled = !!$("transport-webhook-enabled")?.checked;
+            const mqttType = normalizeIntegrationType($("integration-mqtt-type").value);
+            const webhookType = normalizeIntegrationType($("integration-webhook-type").value);
+
+            if (mqttEnabled && mqttType === "event_bus") {
+                const eventName = $("integration-mqtt-event-name").value.trim();
+                if (!isValidEventName(eventName)) {
+                    throw new Error("integration.mqtt.event_bus.event_name inválido (ex: alexa_command ou alexa_bridge.command.mqtt)");
+                }
+            }
+
+            if (webhookEnabled && webhookType === "event_bus") {
+                const eventName = $("integration-webhook-event-name").value.trim();
+                if (!isValidEventName(eventName)) {
+                    throw new Error("integration.webhook.event_bus.event_name inválido (ex: alexa_command ou alexa_bridge.command.mqtt)");
+                }
+            }
+        }
+
+        function transportFlagsFromUI() {
+            return {
+                mqttEnabled: !!$("transport-mqtt-enabled")?.checked,
+                webhookEnabled: !!$("transport-webhook-enabled")?.checked,
+            };
+        }
+
+        function validateTransportSelection() {
+            const saveBtn = $("btn-save-config");
+            if (!saveBtn) return true;
+
+            const { mqttEnabled, webhookEnabled } = transportFlagsFromUI();
+            const valid = mqttEnabled || webhookEnabled;
+            saveBtn.disabled = !valid;
+
+            if (!valid) {
+                setStatus(
+                    "status-config",
+                    "Configuração inválida: habilite pelo menos um transporte (MQTT ou Webhook) para salvar.",
+                    false
+                );
+            }
+            return valid;
+        }
 
         async function api(path, options = {}) {
             const res = await fetch(`./api/${path}`, {
@@ -1031,8 +1247,12 @@
         }
 
         function switchTab(tab) {
-            document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+            document.querySelectorAll("#tabs .tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
             document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.id === `tab-${tab}`));
+            if (tab === "config") {
+                const activeCfg = document.querySelector("#tab-config [data-cfg-tab].active")?.dataset?.cfgTab || "security";
+                switchConfigTab(activeCfg);
+            }
         }
 
         function refreshKpis() {
@@ -1043,74 +1263,83 @@
                 if (roomMap && typeof roomMap === "object") return acc + Object.keys(roomMap).length;
                 return acc;
             }, 0);
+            const webhookId = resolveWebhookId(cfg);
+            const inputTopic = cfg?.mqtt?.input_topic || "-";
+            const mqttEnabled = cfg?.transport?.mqtt_enabled !== false;
+            const webhookEnabled = cfg?.transport?.webhook_enabled !== false;
+            const integrationMqtt = getIntegration(cfg, "mqtt");
+            const integrationWebhook = getIntegration(cfg, "webhook");
+            const integrationLabel = (type) => type === "event_bus" ? "Internal Bus" : "MQTT";
+            const modeParts = [];
+            if (mqttEnabled) modeParts.push(`MQTT -> ${integrationLabel(integrationMqtt.type)}`);
+            if (webhookEnabled) modeParts.push(`WEBHOOK -> ${integrationLabel(integrationWebhook.type)}`);
+            const modeText = modeParts.length ? modeParts.join(" | ") : "NENHUM";
+            const channels = [];
+            if (mqttEnabled) channels.push(`mqtt:${inputTopic}`);
+            if (webhookEnabled) channels.push(`webhook:${webhookId || "-"}`);
             $('kpi-rooms').textContent = String(roomCount);
             $('kpi-devices').textContent = String(deviceCount);
             $('kpi-reload').textContent = state.lastReload;
             $('kpi-agent').textContent = state.lastAgent;
+            $('kpi-mode').textContent = modeText;
+            $('kpi-channel-label').textContent = "Entradas Ativas";
+            $('kpi-channel').textContent = channels.length ? channels.join(" | ") : "nenhuma";
+        }
+
+        function refreshKpisPreview() {
+            const cfg = state.config || {};
+            const previewCfg = {
+                ...cfg,
+                transport: {
+                    ...(cfg.transport || {}),
+                    mqtt_enabled: !!$("transport-mqtt-enabled")?.checked,
+                    webhook_enabled: !!$("transport-webhook-enabled")?.checked,
+                },
+            };
+
+            const previous = state.config;
+            state.config = previewCfg;
+            refreshKpis();
+            state.config = previous;
         }
 
         async function loadConfig() {
             const cfg = await api("config");
             state.config = cfg;
             $("input-topic").value = cfg?.mqtt?.input_topic || "";
-            $("output-topic").value = cfg?.mqtt?.output_topic || "";
-            $("ack-topic").value = cfg?.mqtt?.ack_topic || "";
-            $("dlq-topic").value = cfg?.mqtt?.dlq_topic || "";
             $("off-keywords").value = (cfg?.commands?.off_keywords || []).join(", ");
+            $("transport-mqtt-enabled").checked = cfg?.transport?.mqtt_enabled !== false;
+            $("transport-webhook-enabled").checked = cfg?.transport?.webhook_enabled !== false;
             // Security
             const sec = cfg?.security || {};
             $('sec-enabled').checked = !!sec.enabled;
             $("sec-secret").value = sec.secret || "";
             $("sec-encrypt-payload").checked = !!sec.encrypt_payload;
             // Webhook
-            const wh = cfg?.webhook || {};
-            state.webhookIds = Array.isArray(wh.ids)
-                ? wh.ids
-                : ((wh.id || "").trim() ? [wh.id.trim()] : []);
-            renderWebhookIds();
+            state.webhookId = resolveWebhookId(cfg);
+            $("webhook-id-input").value = state.webhookId;
+
+            const integrationMqtt = getIntegration(cfg, "mqtt");
+            $("integration-mqtt-type").value = integrationMqtt.type;
+            $("integration-mqtt-output-topic").value = integrationMqtt.mqtt.output_topic;
+            $("integration-mqtt-ack-topic").value = integrationMqtt.mqtt.ack_topic;
+            $("integration-mqtt-dlq-topic").value = integrationMqtt.mqtt.dlq_topic;
+            $("integration-mqtt-event-name").value = integrationMqtt.event_bus.event_name;
+            applyIntegrationTypeUI("mqtt", integrationMqtt.type);
+
+            const integrationWebhook = getIntegration(cfg, "webhook");
+            $("integration-webhook-type").value = integrationWebhook.type;
+            $("integration-webhook-output-topic").value = integrationWebhook.mqtt.output_topic;
+            $("integration-webhook-ack-topic").value = integrationWebhook.mqtt.ack_topic;
+            $("integration-webhook-dlq-topic").value = integrationWebhook.mqtt.dlq_topic;
+            $("integration-webhook-event-name").value = integrationWebhook.event_bus.event_name;
+            applyIntegrationTypeUI("webhook", integrationWebhook.type);
+            applyTransportCardsVisibility();
+            validateTransportSelection();
+
             const raw = await api("config/yaml");
             $("raw-yaml").value = raw.yaml || "";
             refreshKpis();
-        }
-
-        function renderWebhookIds() {
-            const body = $("webhook-ids-body");
-            const meta = $("webhook-ids-meta");
-            body.innerHTML = "";
-
-            if (!state.webhookIds.length) {
-                body.innerHTML = '<tr><td colspan="3" style="color:var(--muted)">Nenhum webhook ID adicionado</td></tr>';
-            } else {
-                state.webhookIds.forEach((webhookId, index) => {
-                    const tr = document.createElement("tr");
-
-                    const tdIndex = document.createElement("td");
-                    tdIndex.textContent = String(index + 1);
-
-                    const tdWebhookId = document.createElement("td");
-                    tdWebhookId.className = "cell-wrap";
-                    tdWebhookId.textContent = webhookId;
-
-                    const tdActions = document.createElement("td");
-                    tdActions.className = "action-right";
-                    const actions = document.createElement("div");
-                    actions.className = "tiny-actions";
-                    const removeButton = document.createElement("button");
-                    removeButton.className = "btn tiny danger";
-                    removeButton.type = "button";
-                    removeButton.textContent = "Remover";
-                    removeButton.setAttribute("data-webhook-id", encodeURIComponent(webhookId));
-                    actions.appendChild(removeButton);
-                    tdActions.appendChild(actions);
-
-                    tr.appendChild(tdIndex);
-                    tr.appendChild(tdWebhookId);
-                    tr.appendChild(tdActions);
-                    body.appendChild(tr);
-                });
-            }
-
-            meta.textContent = `${state.webhookIds.length} de 20 IDs cadastrados`;
         }
 
         function renderAliases() {
@@ -1380,21 +1609,71 @@
             } catch (_) { }
         }
 
-        document.querySelectorAll(".tab").forEach((tab) => {
+        document.querySelectorAll("#tabs .tab").forEach((tab) => {
             tab.addEventListener("click", () => switchTab(tab.dataset.tab));
+        });
+
+        document.querySelectorAll("#tab-config [data-cfg-tab]").forEach((tab) => {
+            tab.addEventListener("click", () => switchConfigTab(tab.dataset.cfgTab));
+        });
+
+        $("integration-mqtt-type").addEventListener("change", () => {
+            applyIntegrationTypeUI("mqtt", $("integration-mqtt-type").value);
+        });
+
+        $("integration-webhook-type").addEventListener("change", () => {
+            applyIntegrationTypeUI("webhook", $("integration-webhook-type").value);
+        });
+
+        $("transport-mqtt-enabled").addEventListener("change", () => {
+            applyTransportCardsVisibility();
+        });
+
+        $("transport-webhook-enabled").addEventListener("change", () => {
+            applyTransportCardsVisibility();
         });
 
         $("btn-save-config").addEventListener("click", async () => {
             try {
-                if (state.webhookIds.length > 20) {
-                    throw new Error("Webhook IDs: máximo de 20 itens");
+                if (!validateTransportSelection()) {
+                    return;
                 }
+                validateInputFormats();
+                const webhookId = $("webhook-id-input").value.trim();
                 const payload = {
+                    transport: {
+                        mqtt_enabled: $("transport-mqtt-enabled").checked,
+                        webhook_enabled: $("transport-webhook-enabled").checked,
+                    },
                     mqtt: {
                         input_topic: $("input-topic").value.trim(),
-                        output_topic: $("output-topic").value.trim(),
-                        ack_topic: $("ack-topic").value.trim(),
-                        dlq_topic: $("dlq-topic").value.trim(),
+                        output_topic: $("integration-mqtt-output-topic").value.trim(),
+                        ack_topic: $("integration-mqtt-ack-topic").value.trim(),
+                        dlq_topic: $("integration-mqtt-dlq-topic").value.trim(),
+                    },
+                    integration: {
+                        mqtt: {
+                            type: normalizeIntegrationType($("integration-mqtt-type").value),
+                            mqtt: {
+                                output_topic: $("integration-mqtt-output-topic").value.trim(),
+                                ack_topic: $("integration-mqtt-ack-topic").value.trim(),
+                                dlq_topic: $("integration-mqtt-dlq-topic").value.trim(),
+                            },
+                            event_bus: {
+                                event_name: $("integration-mqtt-event-name").value.trim(),
+                            },
+                        },
+                        webhook: {
+                            type: normalizeIntegrationType($("integration-webhook-type").value),
+                            mqtt: {
+                                output_topic: $("integration-webhook-output-topic").value.trim(),
+                                ack_topic: $("integration-webhook-ack-topic").value.trim(),
+                                dlq_topic: $("integration-webhook-dlq-topic").value.trim(),
+                            },
+                            event_bus: {
+                                event_name: $("integration-webhook-event-name").value.trim(),
+                            },
+                        },
                     },
                     security: {
                         enabled: $("sec-enabled").checked,
@@ -1402,7 +1681,7 @@
                         encrypt_payload: $("sec-encrypt-payload").checked,
                     },
                     webhook: {
-                        ids: state.webhookIds,
+                        id: webhookId,
                     },
                     commands: {
                         off_keywords: $("off-keywords").value.split(",").map((v) => v.trim()).filter(Boolean),
@@ -1413,8 +1692,13 @@
                 await loadConfig();
                 await loadAudit();
                 if (ret?.requires_pyscript_restart) {
-                    setStatus("status-config", "Configuracao salva. Recarregue o PyScript completo para aplicar webhook IDs.", true);
-                    openInfo("Webhook IDs alterados. Para registrar os novos triggers, recarregue o PyScript completo.");
+                    setStatus("status-config", "Configuracao salva. Recarregue o PyScript completo para aplicar o webhook ID.", true);
+                    openInfo("Webhook ID alterado. Para registrar o novo trigger, recarregue o PyScript completo.");
+                } else if (ret?.auto_pyscript_reload && ret?.pyscript_reload_ok) {
+                    setStatus("status-config", "Configuracao salva. Webhook alterado e pyscript.reload executado automaticamente.", true);
+                } else if (ret?.auto_pyscript_reload && !ret?.pyscript_reload_ok) {
+                    setStatus("status-config", `Configuracao salva, mas pyscript.reload falhou: ${ret?.pyscript_reload_detail || "erro desconhecido"}`, false);
+                    openInfo("Webhook ID alterado, mas o reload automatico do PyScript falhou. Execute o reload manualmente.");
                 } else {
                     setStatus("status-config", "Configuracao salva", true);
                 }
@@ -1428,50 +1712,6 @@
             catch (err) { setStatus("status-config", err.message, false); }
         });
 
-        $("btn-add-webhook-id").addEventListener("click", () => {
-            const value = $("webhook-id-input").value.trim();
-            if (!value) return;
-            if (value.includes("/")) {
-                setStatus("status-config", "Webhook ID não pode conter '/'", false);
-                return;
-            }
-            if (state.webhookIds.includes(value)) {
-                const msg = "Webhook ID já adicionado";
-                setStatus("status-config", msg, false);
-                openInfo(msg);
-                return;
-            }
-            if (state.webhookIds.length >= 20) {
-                const msg = "Você atingiu o limite máximo de 20 webhook";
-                setStatus("status-config", msg, false);
-                openInfo(msg);
-                return;
-            }
-            state.webhookIds.push(value);
-            $("webhook-id-input").value = "";
-            renderWebhookIds();
-            setStatus("status-config", "Webhook ID adicionado", true);
-        });
-
-        $("webhook-id-input").addEventListener("keydown", (ev) => {
-            if (ev.key !== "Enter") return;
-            ev.preventDefault();
-            $("btn-add-webhook-id").click();
-        });
-
-        $("webhook-ids-body").addEventListener("click", (ev) => {
-            const target = ev.target;
-            if (!(target instanceof HTMLElement)) return;
-            const encoded = target.getAttribute("data-webhook-id");
-            if (!encoded) return;
-            const webhookId = decodeURIComponent(encoded);
-            openConfirm(`Remover Webhook ID ${webhookId}?`, async () => {
-                state.webhookIds = state.webhookIds.filter((w) => w !== webhookId);
-                renderWebhookIds();
-                setStatus("status-config", "Webhook ID removido", true);
-            });
-        });
-
         $("btn-save-yaml").addEventListener("click", async () => {
             try {
                 const ret = await api("config/yaml", { method: "PUT", body: JSON.stringify({ yaml: $("raw-yaml").value }) });
@@ -1479,8 +1719,13 @@
                 await loadEntities();
                 await loadAudit();
                 if (ret?.requires_pyscript_restart) {
-                    setStatus("status-yaml", "YAML salvo. Recarregue o PyScript completo para aplicar webhook IDs.", true);
-                    openInfo("Webhook IDs alterados no YAML. Recarregue o PyScript completo para registrar os novos triggers.");
+                    setStatus("status-yaml", "YAML salvo. Recarregue o PyScript completo para aplicar o webhook ID.", true);
+                    openInfo("Webhook ID alterado no YAML. Recarregue o PyScript completo para registrar o novo trigger.");
+                } else if (ret?.auto_pyscript_reload && ret?.pyscript_reload_ok) {
+                    setStatus("status-yaml", "YAML salvo. Webhook alterado e pyscript.reload executado automaticamente.", true);
+                } else if (ret?.auto_pyscript_reload && !ret?.pyscript_reload_ok) {
+                    setStatus("status-yaml", `YAML salvo, mas pyscript.reload falhou: ${ret?.pyscript_reload_detail || "erro desconhecido"}`, false);
+                    openInfo("Webhook ID alterado no YAML, mas o reload automatico do PyScript falhou. Execute o reload manualmente.");
                 } else {
                     setStatus("status-yaml", "YAML salvo com sucesso", true);
                 }
