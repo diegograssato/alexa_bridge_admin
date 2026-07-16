@@ -1,4 +1,4 @@
-# DOCKS - AlexaBridgeAddon Configuration Matrix
+# DOCS - AlexaBridgeAddon Configuration Matrix
 
 This document lists supported configuration combinations for AlexaBridgeAddon.
 

@@ -4,7 +4,7 @@ Bridge em PyScript para integrar Alexa Skill e Home Assistant via MQTT.
 
 O fluxo recebe mensagens da skill em um topico de entrada, resolve dispositivo por alias no YAML e publica evento normalizado para automacoes do Home Assistant.
 
-## Novidades da Versão 0.8.0 / Wrapper 3.4.0
+## Novidades da Versão 0.8.1 / Wrapper 3.4.1
 
 - Entradas MQTT e Webhook com habilitação independente por checkboxes (`transport.mqtt_enabled`, `transport.webhook_enabled`).
 - Integração por origem (`integration.mqtt` e `integration.webhook`) com modo `mqtt` ou `event_bus`.
@@ -16,7 +16,7 @@ O fluxo recebe mensagens da skill em um topico de entrada, resolve dispositivo p
 
 Referências:
 - Changelog completo: `CHANGELOG.md`
-- Matriz de combinações de configuração: `DOCKS.md`
+- Matriz de combinações de configuração: `DOCS.md`
  
 ---
 
@@ -42,7 +42,7 @@ Referências:
 - [Testes](#testes)
 - [Roadmap](#roadmap)
 - [Changelog](CHANGELOG.md)
-- [DOCKS - Combinações de Configuração](DOCKS.md)
+- [DOCS - Combinações de Configuração](DOCS.md)
 
 ---
 

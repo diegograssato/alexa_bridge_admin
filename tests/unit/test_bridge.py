@@ -7,6 +7,7 @@ testar toda a lógica sem depender do runtime do HA.
 from __future__ import annotations
 
 import json
+import hmac
 import sys
 import time
 import types
@@ -102,7 +103,7 @@ def _import_bridge(tmp_yaml_path: Path):
         # Precisamos executar o loader com os globals corretos
         spec.loader.exec_module(mod)
 
-    return mod, _log, _mqtt
+    return mod, _log, _mqtt, _event
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +137,7 @@ def bridge(tmp_path):
     cfg_file = tmp_path / "alexa_bridge.yaml"
     cfg_file.write_text(yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
 
-    mod, _log, _mqtt = _import_bridge(cfg_file)
+    mod, _log, _mqtt, _event = _import_bridge(cfg_file)
     # Override CONFIG_FILE so load_config() reads from tmp_path
     mod.CONFIG_FILE = str(cfg_file)
     mod.CONFIG = mod.load_config()
@@ -147,6 +148,7 @@ def bridge(tmp_path):
     mod.DLQ_TOPIC    = mod.CONFIG["mqtt"]["dlq_topic"]
     mod._log = _log
     mod._mqtt_mock = _mqtt
+    mod._event_mock = _event
     return mod
 
 
@@ -356,3 +358,233 @@ class TestIdempotency:
         bridge._purge_expired_ids()
         assert "exp" not in bridge._processed_ids
         assert "fresh" in bridge._processed_ids
+
+
+class TestIntegrationAndTransport:
+    def test_transport_enabled_defaults_true(self, bridge):
+        bridge.CONFIG["transport"] = {}
+        assert bridge.is_transport_enabled("mqtt") is True
+        assert bridge.is_transport_enabled("webhook") is True
+
+    def test_transport_enabled_flags(self, bridge):
+        bridge.CONFIG["transport"] = {"mqtt_enabled": False, "webhook_enabled": True}
+        assert bridge.is_transport_enabled("mqtt") is False
+        assert bridge.is_transport_enabled("webhook") is True
+
+    def test_get_integration_config_defaults(self, bridge):
+        bridge.CONFIG["integration"] = {}
+        cfg = bridge.get_integration_config("mqtt")
+        assert cfg["type"] in {"mqtt", "event_bus"}
+        assert cfg["mqtt"]["output_topic"]
+        assert cfg["event_bus"]["event_name"].endswith(".mqtt")
+
+
+class TestSecurityAndEventBus:
+    def test_verify_hmac_with_forced_signature(self, bridge):
+        bridge.CONFIG["security"] = {"enabled": True, "secret": "abc"}
+        body = {"content": {"DEVICE": "d", "VALUE": "v"}}
+        signing_base = bridge._extract_signing_base(body)
+        expected = hmac.new(
+            b"abc",
+            json.dumps(signing_base, sort_keys=True).encode("utf-8"),
+            bridge.sha256,
+        ).hexdigest()
+        assert bridge.verify_hmac(body, correlation_id="cid", forced_signature=expected) is True
+
+    def test_publish_internal_event_adds_source_metadata(self, bridge):
+        payload = {"name": "cmd"}
+        ok = bridge.publish_internal_event("alexa_bridge.command.test", payload, "cid-1", source="webhook")
+        assert ok is True
+        bridge._event_mock.fire.assert_called_once()
+        _, kwargs = bridge._event_mock.fire.call_args
+        assert kwargs["provided_by"] == "webhook"
+        assert kwargs["transport_source"] == "webhook"
+
+
+class TestProcessCommandBranches:
+    def test_process_command_invalid_payload_goes_to_dlq(self, bridge, monkeypatch):
+        calls = []
+
+        monkeypatch.setattr(bridge, "parse_payload", lambda raw: None)
+        monkeypatch.setattr(
+            bridge,
+            "publish_dlq",
+            lambda topic, raw, reason, correlation_id="", source="mqtt": calls.append((topic, reason, source)),
+        )
+
+        bridge._process_command("mqtt", "not-json", "alexa/command")
+        assert calls == [("alexa/command", "invalid_payload", "mqtt")]
+
+    def test_process_command_invalid_signature_emits_dlq_and_ack(self, bridge, monkeypatch):
+        dlq_calls = []
+        ack_calls = []
+
+        monkeypatch.setattr(bridge, "parse_payload", lambda raw: {"DEVICE": "sala", "VALUE": "ligar", "correlation_id": "cid-1"})
+        monkeypatch.setattr(bridge, "verify_hmac", lambda raw, correlation_id, forced_signature=None: False)
+        monkeypatch.setattr(
+            bridge,
+            "publish_dlq",
+            lambda topic, raw, reason, correlation_id="", source="mqtt": dlq_calls.append((reason, correlation_id, source)),
+        )
+        monkeypatch.setattr(
+            bridge,
+            "publish_ack",
+            lambda topic, correlation_id, status, detail="", source="mqtt": ack_calls.append((status, detail, correlation_id, source)),
+        )
+
+        bridge._process_command("mqtt", "raw", "alexa/command")
+        assert dlq_calls == [("invalid_signature", "cid-1", "mqtt")]
+        assert ack_calls == [("error", "invalid_signature", "cid-1", "mqtt")]
+
+    def test_process_command_decrypt_failed_emits_dlq_and_ack(self, bridge, monkeypatch):
+        dlq_calls = []
+        ack_calls = []
+
+        monkeypatch.setattr(bridge, "parse_payload", lambda raw: {"DEVICE": "sala", "VALUE": "ligar", "correlation_id": "cid-2"})
+        monkeypatch.setattr(bridge, "verify_hmac", lambda raw, correlation_id, forced_signature=None: True)
+        monkeypatch.setattr(bridge, "decrypt_payload", lambda data, correlation_id="": None)
+        monkeypatch.setattr(
+            bridge,
+            "publish_dlq",
+            lambda topic, raw, reason, correlation_id="", source="mqtt": dlq_calls.append((reason, correlation_id, source)),
+        )
+        monkeypatch.setattr(
+            bridge,
+            "publish_ack",
+            lambda topic, correlation_id, status, detail="", source="mqtt": ack_calls.append((status, detail, correlation_id, source)),
+        )
+
+        bridge._process_command("mqtt", "raw", "alexa/command")
+        assert dlq_calls == [("decrypt_failed", "cid-2", "mqtt")]
+        assert ack_calls == [("error", "decrypt_failed", "cid-2", "mqtt")]
+
+    def test_process_command_invalid_type_sends_dlq_and_ack(self, bridge, monkeypatch):
+        dlq_calls = []
+        ack_calls = []
+
+        monkeypatch.setattr(bridge, "verify_hmac", lambda raw, correlation_id, forced_signature=None: True)
+        monkeypatch.setattr(bridge, "decrypt_payload", lambda data, correlation_id="": data)
+        monkeypatch.setattr(bridge, "_is_duplicate", lambda correlation_id: False)
+        monkeypatch.setattr(
+            bridge,
+            "publish_dlq",
+            lambda topic, raw, reason, correlation_id="", source="mqtt": dlq_calls.append((reason, correlation_id, source)),
+        )
+        monkeypatch.setattr(
+            bridge,
+            "publish_ack",
+            lambda topic, correlation_id, status, detail="", source="mqtt": ack_calls.append((status, detail, correlation_id, source)),
+        )
+
+        raw = {"DEVICE": "echo sala", "TYPE": "invalid", "VALUE": "ligar", "correlation_id": "cid-type"}
+        bridge._process_command("mqtt", raw, "alexa/command")
+
+        assert dlq_calls == [("invalid_type", "cid-type", "mqtt")]
+        assert ack_calls == [("error", "invalid_type", "cid-type", "mqtt")]
+
+    def test_process_command_missing_device_sends_dlq_and_ack(self, bridge, monkeypatch):
+        dlq_calls = []
+        ack_calls = []
+
+        monkeypatch.setattr(bridge, "verify_hmac", lambda raw, correlation_id, forced_signature=None: True)
+        monkeypatch.setattr(bridge, "decrypt_payload", lambda data, correlation_id="": data)
+        monkeypatch.setattr(bridge, "_is_duplicate", lambda correlation_id: False)
+        monkeypatch.setattr(
+            bridge,
+            "publish_dlq",
+            lambda topic, raw, reason, correlation_id="", source="mqtt": dlq_calls.append((reason, correlation_id, source)),
+        )
+        monkeypatch.setattr(
+            bridge,
+            "publish_ack",
+            lambda topic, correlation_id, status, detail="", source="mqtt": ack_calls.append((status, detail, correlation_id, source)),
+        )
+
+        raw = {"TYPE": "COMMAND", "VALUE": "ligar", "correlation_id": "cid-device"}
+        bridge._process_command("mqtt", raw, "alexa/command")
+
+        assert dlq_calls == [("missing_device", "cid-device", "mqtt")]
+        assert ack_calls == [("error", "missing_device", "cid-device", "mqtt")]
+
+    def test_process_command_event_bus_success_marks_processed_and_acks(self, bridge, monkeypatch):
+        marks = []
+        writes = []
+        ack_calls = []
+        dlq_calls = []
+
+        bridge.CONFIG["integration"]["mqtt"] = {
+            "type": "event_bus",
+            "event_bus": {"event_name": "alexa_bridge.command.mqtt"},
+            "mqtt": {
+                "output_topic": "homeassistant/voice/command",
+                "ack_topic": "homeassistant/voice/ack",
+                "dlq_topic": "homeassistant/voice/dlq",
+            },
+        }
+
+        monkeypatch.setattr(bridge, "verify_hmac", lambda raw, correlation_id, forced_signature=None: True)
+        monkeypatch.setattr(bridge, "decrypt_payload", lambda data, correlation_id="": data)
+        monkeypatch.setattr(bridge, "_is_duplicate", lambda correlation_id: False)
+        monkeypatch.setattr(bridge, "get_device_info", lambda device: {"room": "sala", "entity": "media_player.echo_sala"})
+        monkeypatch.setattr(bridge, "publish_internal_event", lambda event_name, payload, correlation_id="", source="": True)
+        monkeypatch.setattr(bridge, "publish_event", lambda topic, payload, correlation_id="": False)
+        monkeypatch.setattr(bridge, "_mark_processed", lambda correlation_id: marks.append(correlation_id))
+        monkeypatch.setattr(
+            bridge,
+            "_write_last_event",
+            lambda agent, msg_type, device, room, correlation_id: writes.append((agent, msg_type, device, room, correlation_id)),
+        )
+        monkeypatch.setattr(
+            bridge,
+            "publish_ack",
+            lambda topic, correlation_id, status, detail="", source="mqtt": ack_calls.append((status, detail, correlation_id, source)),
+        )
+        monkeypatch.setattr(
+            bridge,
+            "publish_dlq",
+            lambda topic, raw, reason, correlation_id="", source="mqtt": dlq_calls.append((reason, correlation_id, source)),
+        )
+
+        raw = {"DEVICE": "echo sala", "TYPE": "command", "VALUE": "ligar", "AGENT": "Jarvis", "correlation_id": "cid-evt"}
+        bridge._process_command("mqtt", raw, "alexa/command")
+
+        assert marks == ["cid-evt"]
+        assert writes == [("Jarvis", "COMMAND", "echo sala", "sala", "cid-evt")]
+        assert ack_calls == [("ok", "published", "cid-evt", "mqtt")]
+        assert dlq_calls == []
+
+    def test_process_command_publish_failure_sends_ack_error_and_dlq(self, bridge, monkeypatch):
+        ack_calls = []
+        dlq_calls = []
+
+        bridge.CONFIG["integration"]["mqtt"] = {
+            "type": "mqtt",
+            "mqtt": {
+                "output_topic": "homeassistant/voice/command",
+                "ack_topic": "homeassistant/voice/ack",
+                "dlq_topic": "homeassistant/voice/dlq",
+            },
+            "event_bus": {"event_name": "alexa_bridge.command.mqtt"},
+        }
+
+        monkeypatch.setattr(bridge, "verify_hmac", lambda raw, correlation_id, forced_signature=None: True)
+        monkeypatch.setattr(bridge, "decrypt_payload", lambda data, correlation_id="": data)
+        monkeypatch.setattr(bridge, "_is_duplicate", lambda correlation_id: False)
+        monkeypatch.setattr(bridge, "get_device_info", lambda device: {"room": "sala", "entity": "media_player.echo_sala"})
+        monkeypatch.setattr(bridge, "publish_event", lambda topic, payload, correlation_id="": False)
+        monkeypatch.setattr(
+            bridge,
+            "publish_ack",
+            lambda topic, correlation_id, status, detail="", source="mqtt": ack_calls.append((status, detail, correlation_id, source)),
+        )
+        monkeypatch.setattr(
+            bridge,
+            "publish_dlq",
+            lambda topic, raw, reason, correlation_id="", source="mqtt": dlq_calls.append((reason, correlation_id, source)),
+        )
+
+        raw = {"DEVICE": "echo sala", "TYPE": "command", "VALUE": "ligar", "AGENT": "Jarvis", "correlation_id": "cid-mqtt"}
+        bridge._process_command("mqtt", raw, "alexa/command")
+
+        assert ack_calls == [("error", "publish_failed", "cid-mqtt", "mqtt")]
+        assert dlq_calls == [("publish_failed", "cid-mqtt", "mqtt")]

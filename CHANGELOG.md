@@ -7,6 +7,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.8.1] — 2026-07-16
+
+### Changed
+- Renomeado documento de matriz de configuração de `DOCKS.md` para `DOCS.md`.
+- Referências atualizadas em documentação PT/EN para `DOCS.md`.
+- Wrapper do bridge atualizado para `3.4.1`.
+
 ## [0.8.0] — 2026-07-16
 
 ### Added
@@ -14,7 +21,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Publicação no Event Bus com metadados de origem (`provided_by` e `transport_source`).
 - Auto reload de runtime do PyScript (`pyscript.reload`) ao salvar alterações de webhook via API (`/api/config` e `/api/config/yaml`).
 - Feedback detalhado no frontend para auto reload no salvar Configuração e no salvar YAML.
-- Documento de combinações de configuração (`DOCKS.md`) cobrindo cenários suportados.
+- Documento de combinações de configuração (`DOCS.md`) cobrindo cenários suportados.
 
 ### Changed
 - Bridge PyScript simplificada para usar apenas `webhook.id` no registro do listener (`@webhook_trigger`).

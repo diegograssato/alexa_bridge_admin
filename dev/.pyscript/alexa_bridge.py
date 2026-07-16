@@ -11,7 +11,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 CONFIG_FILE = "/config/pyscript/alexa_bridge.yaml"
 
-VERSION = "3.4.0"
+VERSION = "3.4.1"
 
 # ----------------------------------------------------------
 # Idempotência — cache de correlation_ids já processados
